@@ -8,10 +8,13 @@ import MintNFT from './components/MintNFT'
 import CreateASA from './components/CreateASA'
 import AssetOptIn from './components/AssetOptIn'
 import Bank from './components/Bank'
+import Credenza from './components/Credenza'
 
-interface HomeProps {}
+interface HomeProps { }
 
 const Home: React.FC<HomeProps> = () => {
+  const [credenzaModal, setCredenzaModal] = useState<boolean>(false)
+  const { activeAddress } = useWallet()
   const [openWalletModal, setOpenWalletModal] = useState<boolean>(false)
   const [appCallsDemoModal, setAppCallsDemoModal] = useState<boolean>(false)
   const [sendAlgoModal, setSendAlgoModal] = useState<boolean>(false)
@@ -19,7 +22,6 @@ const Home: React.FC<HomeProps> = () => {
   const [createAsaModal, setCreateAsaModal] = useState<boolean>(false)
   const [assetOptInModal, setAssetOptInModal] = useState<boolean>(false)
   const [bankModal, setBankModal] = useState<boolean>(false)
-  const { activeAddress } = useWallet()
 
   const toggleWalletModal = () => {
     setOpenWalletModal(!openWalletModal)
@@ -45,10 +47,25 @@ const Home: React.FC<HomeProps> = () => {
       {/* Centered content with background blur for readability */}
       <div className="flex items-center justify-center min-h-screen px-4">
         <div className="backdrop-blur-md bg-white/70 rounded-2xl p-8 shadow-xl max-w-5xl w-full">
-          <h1 className="text-4xl font-extrabold text-teal-700 mb-6 text-center">Algorand Workshop Template</h1>
-          <p className="text-gray-700 mb-8 text-center">Algorand operations in one-place.</p>
+          <h1 className="text-4xl font-extrabold text-teal-700 mb-6 text-center">CREDENZA Hackathon Project</h1>
+          <p className="text-gray-700 mb-8 text-center">AI-Powered Academic Credential Verification on Algorand.</p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+            {/* CREDENZA CARD - FEATURED */}
+            <div className="card bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-xl md:col-span-3">
+              <div className="card-body text-center">
+                <h2 className="card-title justify-center text-3xl">🎓 START CREDENZA SYSTEM</h2>
+                <p className="text-lg">Mint credentials with AI verification or Verify existing proofs.</p>
+                <div className="card-actions justify-center mt-4">
+                  <button className="btn btn-wide btn-warning font-bold" disabled={!activeAddress} onClick={() => setCredenzaModal(true)}>
+                    LAUNCH DEMO
+                  </button>
+                </div>
+                {!activeAddress && <p className="text-xs opacity-75 mt-2">Please connect wallet first</p>}
+              </div>
+            </div>
+
             <div className="card bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-xl">
               <div className="card-body">
                 <h2 className="card-title">Send Algo</h2>
@@ -89,9 +106,9 @@ const Home: React.FC<HomeProps> = () => {
               </div>
             </div>
 
-            <div className="card bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-xl md:col-span-2 lg:col-span-1">
+            <div className="card bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-xl">
               <div className="card-body">
-                <h2 className="card-title">Counter (App ID 747652603)</h2>
+                <h2 className="card-title">Counter App</h2>
                 <p>Interact with the shared on-chain counter app.</p>
                 <div className="card-actions justify-end">
                   <button
@@ -106,7 +123,7 @@ const Home: React.FC<HomeProps> = () => {
               </div>
             </div>
 
-            <div className="card bg-gradient-to-br from-rose-500 to-red-500 text-white shadow-xl md:col-span-2 lg:col-span-1">
+            <div className="card bg-gradient-to-br from-rose-500 to-red-500 text-white shadow-xl">
               <div className="card-body">
                 <h2 className="card-title">Bank</h2>
                 <p>Deposit and withdraw ALGOs and view statements.</p>
@@ -120,6 +137,7 @@ const Home: React.FC<HomeProps> = () => {
       </div>
 
       <ConnectWallet openModal={openWalletModal} closeModal={toggleWalletModal} />
+      <Credenza openModal={credenzaModal} closeModal={() => setCredenzaModal(false)} />
       <AppCalls openModal={appCallsDemoModal} setModalState={setAppCallsDemoModal} />
       <SendAlgo openModal={sendAlgoModal} closeModal={() => setSendAlgoModal(false)} />
       <MintNFT openModal={mintNftModal} closeModal={() => setMintNftModal(false)} />
