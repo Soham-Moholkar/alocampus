@@ -8,7 +8,6 @@ export interface NavItem {
 const shared: NavItem[] = [
   { label: 'Verify Certificate', to: '/verify/certificate' },
   { label: 'Activity', to: '/activity' },
-  { label: 'Settings', to: '/settings' },
 ]
 
 export const roleNav: Record<Role, NavItem[]> = {

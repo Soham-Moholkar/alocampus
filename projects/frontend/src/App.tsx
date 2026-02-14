@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 
 import { useAuth } from './context/AuthContext'
+import { usePreview } from './context/PreviewContext'
 import { AppShell } from './layout/AppShell'
 import { PublicLayout } from './layout/PublicLayout'
 import { AdminAnalyticsPage } from './pages/admin/AdminAnalyticsPage'
@@ -26,19 +27,21 @@ import { StudentVotingPage } from './pages/student/StudentVotingPage'
 
 const HomeRedirect = () => {
   const { isAuthenticated, role, isLoading } = useAuth()
+  const preview = usePreview()
 
   if (isLoading) {
     return <div className="center-page">Loading session...</div>
   }
 
-  if (!isAuthenticated || !role) {
+  const effectiveRole = preview.role ?? role
+  if (!effectiveRole) {
     return <Navigate to="/connect" replace />
   }
 
-  if (role === 'admin') {
+  if (effectiveRole === 'admin') {
     return <Navigate to="/admin/dashboard" replace />
   }
-  if (role === 'faculty') {
+  if (effectiveRole === 'faculty') {
     return <Navigate to="/faculty/dashboard" replace />
   }
   return <Navigate to="/student/dashboard" replace />
@@ -46,10 +49,11 @@ const HomeRedirect = () => {
 
 const RequireAuth = () => {
   const { isAuthenticated, isLoading } = useAuth()
+  const preview = usePreview()
   if (isLoading) {
     return <div className="center-page">Loading session...</div>
   }
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !preview.role) {
     return <Navigate to="/connect" replace />
   }
   return <Outlet />
@@ -57,7 +61,9 @@ const RequireAuth = () => {
 
 const FacultyGuard = () => {
   const { role } = useAuth()
-  if (role === 'faculty' || role === 'admin') {
+  const preview = usePreview()
+  const effectiveRole = preview.role ?? role
+  if (effectiveRole === 'faculty' || effectiveRole === 'admin') {
     return <Outlet />
   }
   return <Navigate to="/student/dashboard" replace />
@@ -65,10 +71,12 @@ const FacultyGuard = () => {
 
 const AdminGuard = () => {
   const { role } = useAuth()
-  if (role === 'admin') {
+  const preview = usePreview()
+  const effectiveRole = preview.role ?? role
+  if (effectiveRole === 'admin') {
     return <Outlet />
   }
-  if (role === 'faculty') {
+  if (effectiveRole === 'faculty') {
     return <Navigate to="/faculty/dashboard" replace />
   }
   return <Navigate to="/student/dashboard" replace />

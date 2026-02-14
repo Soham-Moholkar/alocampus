@@ -7,6 +7,7 @@ import { WalletProvider } from '@txnlab/use-wallet-react'
 import { App } from './App'
 import { AuthProvider } from './context/AuthContext'
 import { DemoModeProvider } from './context/DemoModeContext'
+import { PreviewProvider } from './context/PreviewContext'
 import { validateConfig } from './lib/config'
 import { getWalletManager } from './lib/wallet'
 import { ConfigMissingPage } from './pages/shared/ConfigMissingPage'
@@ -25,9 +26,11 @@ const Providers = () => {
       <SnackbarProvider maxSnack={4} autoHideDuration={3500}>
         <BrowserRouter>
           <AuthProvider>
-            <DemoModeProvider>
-              <App />
-            </DemoModeProvider>
+            <PreviewProvider>
+              <DemoModeProvider>
+                <App />
+              </DemoModeProvider>
+            </PreviewProvider>
           </AuthProvider>
         </BrowserRouter>
       </SnackbarProvider>

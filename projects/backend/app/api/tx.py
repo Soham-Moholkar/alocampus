@@ -12,7 +12,13 @@ router = APIRouter()
 
 @router.post("/track", response_model=TxStatus)
 async def track(body: TrackTxRequest) -> TxStatus:
-    return await tx_uc.track(body.tx_id, body.kind)
+    return await tx_uc.track(
+        body.tx_id,
+        body.kind,
+        session_id=body.session_id,
+        course_code=body.course_code,
+        student_address=body.student_address,
+    )
 
 
 @router.get("/track/{tx_id}", response_model=TxStatus)

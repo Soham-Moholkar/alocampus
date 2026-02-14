@@ -37,6 +37,8 @@ class CertificateRegistryContract(ARC4Contract):
         self.cert_recipient = BoxMap(Bytes, arc4.Address, key_prefix=b"cr")
         self.cert_asset = BoxMap(Bytes, arc4.UInt64, key_prefix=b"ca")
         self.cert_ts = BoxMap(Bytes, arc4.UInt64, key_prefix=b"ct")
+        self.ai_intent_expiry = BoxMap(Bytes, arc4.UInt64, key_prefix=b"aie")
+        self.ai_intent_used = BoxMap(Bytes, arc4.Bool, key_prefix=b"aiu")
 
     # ═══════════════════════════════════════════════════════
     # Lifecycle
@@ -78,6 +80,38 @@ class CertificateRegistryContract(ARC4Contract):
             return True
         return arc4.Address(addr) in self.faculty_list
 
+    @arc4.abimethod
+    def record_ai_intent(
+        self,
+        intent_hash: arc4.DynamicBytes,
+        expires_round: arc4.UInt64,
+    ) -> arc4.Bool:
+        assert self._is_admin_or_faculty(Txn.sender), "not authorised"
+        assert expires_round.native >= Global.round, "already expired"
+        h = intent_hash.native
+        self.ai_intent_expiry[h] = expires_round
+        self.ai_intent_used[h] = arc4.Bool(False)
+        return arc4.Bool(True)
+
+    @arc4.abimethod
+    def cancel_ai_intent(self, intent_hash: arc4.DynamicBytes) -> arc4.Bool:
+        assert self._is_admin_or_faculty(Txn.sender), "not authorised"
+        h = intent_hash.native
+        assert h in self.ai_intent_expiry, "intent missing"
+        if h in self.ai_intent_used:
+            assert not self.ai_intent_used[h].native, "intent already used"
+            del self.ai_intent_used[h]
+        del self.ai_intent_expiry[h]
+        return arc4.Bool(True)
+
+    @subroutine
+    def _consume_ai_intent(self, intent_hash: Bytes) -> None:
+        assert intent_hash in self.ai_intent_expiry, "intent missing"
+        assert Global.round <= self.ai_intent_expiry[intent_hash].native, "intent expired"
+        if intent_hash in self.ai_intent_used:
+            assert not self.ai_intent_used[intent_hash].native, "intent already used"
+        self.ai_intent_used[intent_hash] = arc4.Bool(True)
+
     # ═══════════════════════════════════════════════════════
     # Certificate registration
     # ═══════════════════════════════════════════════════════
@@ -95,10 +129,30 @@ class CertificateRegistryContract(ARC4Contract):
         h = cert_hash.native
         assert h not in self.cert_recipient, "already registered"
 
-        self.cert_recipient[h] = recipient.copy()
-        self.cert_asset[h] = asset_id.copy()
-        self.cert_ts[h] = issued_ts.copy()
+        self.cert_recipient[h] = recipient
+        self.cert_asset[h] = asset_id
+        self.cert_ts[h] = issued_ts
         return arc4.Bool(True)  # noqa: FBT003
+
+    @arc4.abimethod
+    def register_cert_ai(
+        self,
+        cert_hash: arc4.DynamicBytes,
+        recipient: arc4.Address,
+        asset_id: arc4.UInt64,
+        issued_ts: arc4.UInt64,
+        intent_hash: arc4.DynamicBytes,
+    ) -> arc4.Bool:
+        """AI-assisted certificate registration with intent consumption."""
+        assert self._is_admin_or_faculty(Txn.sender), "not authorised"
+        self._consume_ai_intent(intent_hash.native)
+        h = cert_hash.native
+        assert h not in self.cert_recipient, "already registered"
+
+        self.cert_recipient[h] = recipient
+        self.cert_asset[h] = asset_id
+        self.cert_ts[h] = issued_ts
+        return arc4.Bool(True)
 
     @arc4.abimethod
     def reissue_cert(
@@ -111,9 +165,9 @@ class CertificateRegistryContract(ARC4Contract):
         """Admin-only: overwrite an existing certificate entry."""
         assert self._is_admin(Txn.sender), "only admin"
         h = cert_hash.native
-        self.cert_recipient[h] = recipient.copy()
-        self.cert_asset[h] = asset_id.copy()
-        self.cert_ts[h] = issued_ts.copy()
+        self.cert_recipient[h] = recipient
+        self.cert_asset[h] = asset_id
+        self.cert_ts[h] = issued_ts
         return arc4.Bool(True)  # noqa: FBT003
 
     # ═══════════════════════════════════════════════════════
@@ -152,9 +206,46 @@ class CertificateRegistryContract(ARC4Contract):
         asset_id = result.created_asset.id
 
         # Register on-chain
-        self.cert_recipient[h] = recipient.copy()
+        self.cert_recipient[h] = recipient
         self.cert_asset[h] = arc4.UInt64(asset_id)
-        self.cert_ts[h] = issued_ts.copy()
+        self.cert_ts[h] = issued_ts
+
+        return arc4.UInt64(asset_id)
+
+    @arc4.abimethod
+    def mint_and_register_ai(
+        self,
+        cert_hash: arc4.DynamicBytes,
+        recipient: arc4.Address,
+        metadata_url: arc4.String,
+        issued_ts: arc4.UInt64,
+        intent_hash: arc4.DynamicBytes,
+    ) -> arc4.UInt64:
+        """
+        AI-assisted mint and register flow with intent consumption.
+        """
+        assert self._is_admin_or_faculty(Txn.sender), "not authorised"
+        self._consume_ai_intent(intent_hash.native)
+        h = cert_hash.native
+        assert h not in self.cert_recipient, "already registered"
+
+        asset_params = itxn.AssetConfig(
+            total=UInt64(1),
+            decimals=UInt64(0),
+            default_frozen=False,
+            unit_name=Bytes(b"CERT"),
+            asset_name=Bytes(b"AlgoCampusCert"),
+            url=metadata_url.native.bytes,
+            manager=Global.current_application_address,
+            reserve=Global.current_application_address,
+            fee=UInt64(0),
+        )
+        result = asset_params.submit()
+        asset_id = result.created_asset.id
+
+        self.cert_recipient[h] = recipient
+        self.cert_asset[h] = arc4.UInt64(asset_id)
+        self.cert_ts[h] = issued_ts
 
         return arc4.UInt64(asset_id)
 
@@ -171,8 +262,8 @@ class CertificateRegistryContract(ARC4Contract):
         assert h in self.cert_recipient, "cert not found"
         return arc4.Tuple(
             (
-                self.cert_recipient[h].copy(),
-                self.cert_asset[h].copy(),
-                self.cert_ts[h].copy(),
+                self.cert_recipient[h],
+                self.cert_asset[h],
+                self.cert_ts[h],
             )
         )

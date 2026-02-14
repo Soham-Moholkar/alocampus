@@ -5,10 +5,16 @@ Write operations (issue) live under /faculty/cert/issue.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from typing import Annotated
 
+from fastapi import APIRouter, Query
+from fastapi import Depends
+
+from app.auth import TokenPayload, require_faculty
 from app.domain.models import CertVerifyResponse
+from app.domain.models import IssueCertRequest, IssueCertResponse
 from app.usecases import certs_uc
+from app.usecases import certificate_uc
 
 router = APIRouter()
 
@@ -19,3 +25,12 @@ async def verify_cert(
 ) -> CertVerifyResponse:
     """Public on-chain certificate verification (no JWT required)."""
     return await certs_uc.verify(cert_hash)
+
+
+@router.post("/issue", response_model=IssueCertResponse)
+async def issue_cert_alias(
+    body: IssueCertRequest,
+    _user: Annotated[TokenPayload, Depends(require_faculty)],
+) -> IssueCertResponse:
+    """Compatibility alias for certificate issuance."""
+    return await certificate_uc.issue(body)

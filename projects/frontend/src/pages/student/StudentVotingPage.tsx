@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useSnackbar } from 'notistack'
 import { useWallet } from '@txnlab/use-wallet-react'
 
@@ -14,16 +14,26 @@ import { useAsyncData } from '../../hooks/useAsyncData'
 import { useCurrentRound } from '../../hooks/useCurrentRound'
 import { useTxToast } from '../../hooks/useTxToast'
 import { computeRoundStatus } from '../../lib/abi'
-import { apiRequest } from '../../lib/api'
+import { ApiError, apiRequest } from '../../lib/api'
+import { appendSyntheticActivity, castDemoPollVote, getDemoPollResults, getLocalVotes, markLocalVote } from '../../lib/storage'
+import { demoPollPurpose, isDemoPoll, mergePolls } from '../../lib/demoData'
 import { endpoints } from '../../lib/endpoints'
-import { getLocalVotes, markLocalVote } from '../../lib/storage'
-import type { Poll, PollListResponse, TxStatus as TxStatusModel } from '../../types/api'
+import { downloadCsv, downloadJson } from '../../lib/export'
+import type { Poll, PollContextResponse, PollListResponse, TxStatus as TxStatusModel } from '../../types/api'
+
+const syntheticStatus = (): TxStatusModel => ({
+  tx_id: `demo-vote-${Date.now()}`,
+  kind: 'vote',
+  status: 'confirmed',
+  confirmed_round: 0,
+})
 
 export const StudentVotingPage = () => {
   const { enqueueSnackbar } = useSnackbar()
   const { currentRound } = useCurrentRound()
   const { notifyTxLifecycle } = useTxToast()
   const { algodClient, transactionSigner, activeAddress } = useWallet()
+  const [searchParams] = useSearchParams()
 
   const [selectedPollId, setSelectedPollId] = useState<number | null>(null)
   const [selectedOption, setSelectedOption] = useState<number>(0)
@@ -31,25 +41,89 @@ export const StudentVotingPage = () => {
   const [votedPolls, setVotedPolls] = useState<number[]>(() => getLocalVotes())
   const [txStatus, setTxStatus] = useState<TxStatusModel | null>(null)
   const [txPending, setTxPending] = useState(false)
+  const [pollContexts, setPollContexts] = useState<Record<number, PollContextResponse>>({})
 
   const polls = useAsyncData(() => apiRequest<PollListResponse>(endpoints.polls), [])
+  const mergedPolls = mergePolls(polls.data?.polls)
+  const livePollIds = useMemo(() => (polls.data?.polls ?? []).map((poll) => poll.poll_id), [polls.data?.polls])
 
   useEffect(() => {
-    if (!selectedPollId && polls.data?.polls.length) {
-      setSelectedPollId(polls.data.polls[0].poll_id)
+    const pollFromQuery = Number(searchParams.get('pollId'))
+    if (Number.isFinite(pollFromQuery) && mergedPolls.some((poll) => poll.poll_id === pollFromQuery)) {
+      setSelectedPollId(pollFromQuery)
+      return
     }
-  }, [polls.data?.polls, selectedPollId])
+
+    if (!selectedPollId && mergedPolls.length > 0) {
+      setSelectedPollId(mergedPolls[0].poll_id)
+    }
+  }, [mergedPolls, searchParams, selectedPollId])
+
+  useEffect(() => {
+    let active = true
+
+    const loadContexts = async (): Promise<void> => {
+      if (livePollIds.length === 0) {
+        if (active) {
+          setPollContexts({})
+        }
+        return
+      }
+
+      const entries = await Promise.all(
+        livePollIds.map(async (pollId) => {
+          try {
+            const context = await apiRequest<PollContextResponse>(endpoints.pollContext(pollId), { auth: false })
+            return [pollId, context] as const
+          } catch (error) {
+            if (error instanceof ApiError && error.status === 404) {
+              return null
+            }
+            return null
+          }
+        }),
+      )
+
+      if (!active) {
+        return
+      }
+
+      const next: Record<number, PollContextResponse> = {}
+      entries.forEach((entry) => {
+        if (entry) {
+          next[entry[0]] = entry[1]
+        }
+      })
+      setPollContexts(next)
+    }
+
+    void loadContexts()
+    return () => {
+      active = false
+    }
+  }, [livePollIds])
 
   const selectedPoll = useMemo<Poll | null>(() => {
-    if (!selectedPollId || !polls.data) {
+    if (!selectedPollId) {
       return null
     }
-    return polls.data.polls.find((poll) => poll.poll_id === selectedPollId) ?? null
-  }, [polls.data, selectedPollId])
+    return mergedPolls.find((poll) => poll.poll_id === selectedPollId) ?? null
+  }, [mergedPolls, selectedPollId])
+  const selectedContext = selectedPoll ? pollContexts[selectedPoll.poll_id] : null
 
   useEffect(() => {
     const load = async (): Promise<void> => {
-      if (!selectedPoll || !activeAddress) {
+      if (!selectedPoll) {
+        setResultCounts([])
+        return
+      }
+
+      if (isDemoPoll(selectedPoll)) {
+        setResultCounts(getDemoPollResults(selectedPoll.poll_id, selectedPoll.options.length))
+        return
+      }
+
+      if (!activeAddress) {
         setResultCounts([])
         return
       }
@@ -80,13 +154,37 @@ export const StudentVotingPage = () => {
   }, [activeAddress, algodClient, selectedPoll, transactionSigner])
 
   const castVoteAction = async (): Promise<void> => {
-    if (!selectedPoll || !activeAddress) {
-      enqueueSnackbar('Select a poll and connect wallet first.', { variant: 'warning' })
+    if (!selectedPoll) {
+      enqueueSnackbar('Select a poll first.', { variant: 'warning' })
       return
     }
 
     if (votedPolls.includes(selectedPoll.poll_id)) {
       enqueueSnackbar('You already voted in this local session.', { variant: 'info' })
+      return
+    }
+
+    if (isDemoPoll(selectedPoll)) {
+      const counts = castDemoPollVote(selectedPoll.poll_id, selectedOption, selectedPoll.options.length)
+      markLocalVote(selectedPoll.poll_id)
+      setVotedPolls(getLocalVotes())
+      setResultCounts(counts)
+      const status = syntheticStatus()
+      setTxStatus(status)
+      appendSyntheticActivity({
+        kind: 'vote_demo',
+        title: `Demo vote recorded for poll #${selectedPoll.poll_id}`,
+        description: `Selected option: ${selectedPoll.options[selectedOption]}`,
+        actor: activeAddress ?? 'demo:student',
+        tx_id: status.tx_id,
+        tags: [`poll:${selectedPoll.poll_id}`],
+      })
+      enqueueSnackbar('Demo vote submitted locally. Live voting still uses Algorand tx flow.', { variant: 'success' })
+      return
+    }
+
+    if (!activeAddress) {
+      enqueueSnackbar('Connect wallet first for live poll voting.', { variant: 'warning' })
       return
     }
 
@@ -127,20 +225,54 @@ export const StudentVotingPage = () => {
   }
 
   const pollStatus = selectedPoll
-    ? computeRoundStatus(selectedPoll.start_round, selectedPoll.end_round, currentRound ?? undefined)
+    ? isDemoPoll(selectedPoll)
+      ? 'active'
+      : computeRoundStatus(selectedPoll.start_round, selectedPoll.end_round, currentRound ?? undefined)
     : 'upcoming'
+
+  const activePollCards = mergedPolls.filter((poll) => {
+    if (isDemoPoll(poll)) {
+      return true
+    }
+    return computeRoundStatus(poll.start_round, poll.end_round, currentRound ?? undefined) === 'active'
+  })
 
   return (
     <div className="page-grid">
-      <Card title="Active Polls" right={<button type="button" className="btn btn-ghost" onClick={() => void polls.refresh()}>Refresh</button>}>
+      <Card title="Voting Center" subtitle="Understand why each poll exists, then cast your vote.">
+        <div className="poll-card-grid">
+          {activePollCards.length === 0 ? (
+            <EmptyState title="No active polls" body="There are currently no open voting polls." />
+          ) : (
+            activePollCards.map((poll) => (
+              <article
+                key={poll.poll_id}
+                className={`poll-context-card ${selectedPollId === poll.poll_id ? 'selected' : ''}`}
+              >
+                <h4>#{poll.poll_id} {poll.question}</h4>
+                <p>{pollContexts[poll.poll_id]?.purpose ?? demoPollPurpose[poll.poll_id] ?? 'This poll is part of ongoing governance and planning feedback.'}</p>
+                {pollContexts[poll.poll_id] ? (
+                  <small>
+                    {pollContexts[poll.poll_id].category} · audience {pollContexts[poll.poll_id].audience}
+                  </small>
+                ) : null}
+                <div className="inline-row">
+                  <span className={`badge badge-${isDemoPoll(poll) ? 'warning' : 'success'}`}>{isDemoPoll(poll) ? 'Demo' : 'Live'}</span>
+                  <button type="button" className="btn" onClick={() => setSelectedPollId(poll.poll_id)}>
+                    Open Poll
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </Card>
+
+      <Card title="All Polls" right={<button type="button" className="btn btn-ghost" onClick={() => void polls.refresh()}>Refresh</button>}>
         {polls.loading ? <LoadingSkeleton rows={4} /> : null}
         {polls.error ? <p className="error-text">{polls.error}</p> : null}
 
-        {!polls.loading && polls.data && polls.data.count === 0 ? (
-          <EmptyState title="No polls yet" body="Faculty has not created any polls." />
-        ) : null}
-
-        {!polls.loading && polls.data && polls.data.count > 0 ? (
+        {mergedPolls.length > 0 ? (
           <div className="list-select">
             <label htmlFor="poll-select">Poll</label>
             <select
@@ -151,9 +283,9 @@ export const StudentVotingPage = () => {
                 setSelectedOption(0)
               }}
             >
-              {polls.data.polls.map((poll) => (
+              {mergedPolls.map((poll) => (
                 <option key={poll.poll_id} value={poll.poll_id}>
-                  #{poll.poll_id} - {poll.question}
+                  #{poll.poll_id} - {poll.question} {isDemoPoll(poll) ? '(demo)' : ''}
                 </option>
               ))}
             </select>
@@ -167,6 +299,31 @@ export const StudentVotingPage = () => {
           right={<StatusPill label={pollStatus} tone={pollStatus === 'active' ? 'success' : pollStatus === 'upcoming' ? 'info' : 'warning'} />}
         >
           <p>{selectedPoll.question}</p>
+          <p className="muted-text">
+            {selectedContext?.purpose ?? demoPollPurpose[selectedPoll.poll_id] ?? 'Participation helps improve campus-level decision quality.'}
+          </p>
+          <div className="kv">
+            <span>Type</span>
+            <span>{isDemoPoll(selectedPoll) ? 'Synthetic demo poll' : 'Live Algorand poll'}</span>
+          </div>
+          {selectedContext ? (
+            <>
+              <div className="kv">
+                <span>Audience</span>
+                <span>{selectedContext.audience}</span>
+              </div>
+              <div className="kv">
+                <span>Category</span>
+                <span>{selectedContext.category}</span>
+              </div>
+              {selectedContext.extra_note ? (
+                <div className="kv">
+                  <span>Note</span>
+                  <span>{selectedContext.extra_note}</span>
+                </div>
+              ) : null}
+            </>
+          ) : null}
           <div className="kv">
             <span>Start round</span>
             <span>{selectedPoll.start_round}</span>
@@ -201,7 +358,7 @@ export const StudentVotingPage = () => {
               onClick={() => void castVoteAction()}
               disabled={pollStatus !== 'active' || votedPolls.includes(selectedPoll.poll_id) || txPending}
             >
-              {txPending ? 'Submitting...' : 'Cast Vote'}
+              {txPending ? 'Submitting...' : isDemoPoll(selectedPoll) ? 'Cast Demo Vote' : 'Cast Live Vote'}
             </button>
             <Link className="btn btn-ghost" to={`/activity?pollId=${selectedPoll.poll_id}`}>
               View Audit
@@ -216,6 +373,39 @@ export const StudentVotingPage = () => {
 
       {selectedPoll ? (
         <Card title="Results">
+          <div className="inline-row">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                const turnout = resultCounts.reduce((sum, count) => sum + count, 0)
+                downloadJson(`student-poll-${selectedPoll.poll_id}-results.json`, {
+                  poll_id: selectedPoll.poll_id,
+                  question: selectedPoll.question,
+                  options: selectedPoll.options,
+                  counts: resultCounts,
+                  turnout,
+                })
+              }}
+            >
+              Export JSON
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                const turnout = resultCounts.reduce((sum, count) => sum + count, 0)
+                const rows = selectedPoll.options.map((option, idx) => {
+                  const votes = resultCounts[idx] ?? 0
+                  const share = turnout === 0 ? 0 : Math.round((votes / turnout) * 100)
+                  return [option, votes, share]
+                })
+                downloadCsv(`student-poll-${selectedPoll.poll_id}-results.csv`, ['option', 'votes', 'share_percent'], rows)
+              }}
+            >
+              Export CSV
+            </button>
+          </div>
           <div className="table-wrap">
             <table>
               <thead>

@@ -8,7 +8,8 @@ import logging
 from app.domain.models import CreatePollRequest, PollResponse, PollListResponse
 from app.infra.algorand.chain import create_poll_on_chain
 from app.infra.algorand.client import get_app_ids
-from app.infra.db.models import insert_poll, list_polls, get_poll
+from app.infra.db.models import get_poll, insert_poll, list_polls, upsert_poll_context
+from app.usecases import activity_uc
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,26 @@ async def create(req: CreatePollRequest, creator: str) -> PollResponse:
         creator=creator,
         app_id=app_id,
         tx_id=tx_id,
+    )
+
+    await activity_uc.log_event(
+        kind="poll_created",
+        title=f"Poll #{poll_id} created",
+        description=req.question,
+        actor=creator,
+        tx_id=tx_id,
+        tags=[f"poll:{poll_id}"],
+    )
+
+    await upsert_poll_context(
+        poll_id=poll_id,
+        purpose="Official campus decision poll.",
+        audience="all",
+        category="governance",
+        extra_note="Created from faculty voting workflow.",
+        updated_by=creator,
+        hash_value=f"seed:{poll_id}",
+        anchor_tx_id=tx_id,
     )
 
     return PollResponse(

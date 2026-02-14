@@ -414,7 +414,7 @@ poetry run uvicorn app.main:app --reload --port 8000
 # 7) Start the frontend (separate terminal)
 cd ..\frontend
 npm install
-npm run dev
+npm run dev:localnet
 #    → http://localhost:5173
 ```
 
@@ -448,7 +448,7 @@ poetry run uvicorn app.main:app --reload --port 8000
 # 7) Start frontend
 cd ../frontend
 npm install
-npm run dev
+npm run dev:localnet
 ```
 
 ---
@@ -473,6 +473,16 @@ All backend config lives in `projects/backend/.env.localnet`:
 | `JWT_EXPIRE_MINUTES` | `60` | Token expiry |
 | `APP_MANIFEST_PATH` | `../contracts/.../app_manifest.json` | Deployed contract IDs |
 | `DB_PATH` | `.data/algocampus.db` | SQLite database file |
+| `DATABASE_URL` | `` | PostgreSQL DSN (primary when provided) |
+| `SQLITE_FALLBACK_URL` | `sqlite+aiosqlite:///.data/algocampus.db` | SQLite fallback DSN |
+| `DB_POOL_SIZE` | `20` | DB connection pool size |
+| `DB_MAX_OVERFLOW` | `20` | Burst connection allowance |
+| `DB_TIMEOUT_SECONDS` | `30` | DB command timeout |
+| `AI_ENABLED` | `false` | Enable AI provider orchestration |
+| `GEMINI_API_KEY` | `` | Gemini key (backend-only) |
+| `GEMINI_MODEL` | `gemini-1.5-flash` | Gemini model name |
+| `GEMINI_TIMEOUT_SECONDS` | `8` | AI provider timeout |
+| `AI_AUTO_EXECUTE_LOW_RISK` | `true` | Auto-execute low-risk AI actions |
 | `BFF_BASE_URL` | `http://localhost:8000` | BFF public URL (for metadata URLs) |
 
 ---
@@ -494,9 +504,9 @@ AlgoPy source  →  algokit compile python  →  TEAL + ARC-32 JSON
 
 | Contract | Output File |
 |----------|-------------|
-| VotingContract | `VotingClient.ts` |
-| AttendanceContract | `AttendanceClient.ts` |
-| CertificateRegistryContract | `CertificateRegistryClient.ts` |
+| VotingContract | `VotingContractClient.ts` |
+| AttendanceContract | `AttendanceContractClient.ts` |
+| CertificateRegistryContract | `CertificateRegistryContractClient.ts` |
 
 **Important:** After any contract changes, always re-run:
 ```bash
@@ -507,15 +517,84 @@ poetry run python -m smart_contracts.helpers.generate_clients
 
 ---
 
-## Frontend Endpoint Mapping TODO
+## v2.2 Additive Update
 
-Current frontend endpoint map is centralized at `projects/frontend/src/lib/endpoints.ts`.
-Detected naming mismatches and fallbacks:
+### Challenge Mapping (AI + Automation in Blockchain)
 
-- `GET /me` expected by UI spec maps to backend `GET /auth/me`.
-- `POST /cert/issue` expected by UI spec maps to backend `POST /faculty/cert/issue`.
-- `GET /activity` is not present in backend; frontend falls back to a synthetic activity feed built from `/polls`, `/attendance/sessions`, and `/certs`.
-- `GET /system/health` is not present in backend; frontend falls back to `/health` plus `/analytics/summary`.
+This pass maps directly to the challenge goals:
+
+- **Trust and transparency**:
+  - `/activity` is now first-class and acts as the shared audit feed for dashboards, right rail, and admin history.
+  - coordination, feedback commits, tx tracking, role changes, and AI planning/execution emit consistent activity records.
+- **Verifiable records**:
+  - certificate verification remains on-chain (`/cert/verify` + contract verify).
+  - feedback and coordination support on-chain note anchoring for tamper-evident proof.
+- **Fair participation / coordination**:
+  - polling and attendance remain contract-governed.
+  - coordination lifecycle endpoints (`/coordination/tasks*`) add explicit group workflow state.
+- **Deterministic AI automation**:
+  - contracts never call AI directly.
+  - AI plans are proxied by backend, hashed into `intent_hash`, recorded on-chain, then consumed by `_ai` wrapper methods.
+
+### Backend Endpoint Status
+
+Implemented and wired:
+
+- `GET /activity` with filters (`limit`, `offset`, `address`, `pollId`, `sessionId`, `kind`, `tag`)
+- `GET /system/health` with component checks (`bff`, `db`, `algod`, `indexer`, `kmd`)
+- `GET /me` alias (keeps `/auth/me` compatibility)
+- `POST /cert/issue` alias (keeps `/faculty/cert/issue` compatibility)
+- `POST /feedback/commit`, `GET /feedback/aggregate`
+- `POST /coordination/tasks`, `GET /coordination/tasks`
+- `POST /coordination/tasks/{task_id}/anchor`, `GET /coordination/tasks/{task_id}/verify`
+- `POST /ai/faculty/poll-plan`
+- `POST /ai/faculty/session-plan`
+- `POST /ai/faculty/certificate-plan`
+- `POST /ai/admin/role-risk-plan`
+- `POST /ai/admin/system-remediation-plan`
+- `POST /ai/coordination/task-plan`
+- `POST /ai/execute/{intent_id}`
+
+### Scalable Data Path
+
+- PostgreSQL async is supported as primary via `DATABASE_URL`.
+- SQLite remains available as local fallback via `SQLITE_FALLBACK_URL`.
+- Added indexes for high-volume tables (`activity_events`, `tx_tracking`, feedback, coordination, AI intent/execution).
+- Alembic scaffolding added under `projects/backend/alembic/`.
+
+### AI Contract Proof Model
+
+Each contract now includes deterministic AI intent anchoring:
+
+- `record_ai_intent(intent_hash, expires_round)`
+- `cancel_ai_intent(intent_hash)`
+- internal one-time `_consume_ai_intent(intent_hash)`
+
+And AI wrapper methods:
+
+- Voting: `create_poll_ai(...)`
+- Attendance: `create_session_ai(...)`
+- Certificate: `register_cert_ai(...)`, `mint_and_register_ai(...)`
+
+Policy defaults:
+
+- low-risk (`create_poll_ai`, `create_session_ai`) can auto-execute
+- high-risk actions remain approval-required
+
+### New Environment Variables (Backend)
+
+In `projects/backend/.env.localnet`:
+
+- `DATABASE_URL`
+- `SQLITE_FALLBACK_URL`
+- `DB_POOL_SIZE`
+- `DB_MAX_OVERFLOW`
+- `DB_TIMEOUT_SECONDS`
+- `AI_ENABLED`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+- `GEMINI_TIMEOUT_SECONDS`
+- `AI_AUTO_EXECUTE_LOW_RISK`
 
 ---
 
@@ -540,7 +619,7 @@ Detected naming mismatches and fallbacks:
 | Smart Contracts | AlgoPy (Algorand Python), ARC-4, Boxes, Inner Transactions |
 | Compilation | PuyaPy → TEAL + ARC-32 JSON |
 | Backend API | FastAPI 0.110+, Uvicorn, Pydantic v2 |
-| Database | SQLite via aiosqlite |
+| Database | PostgreSQL (primary) + SQLite fallback |
 | Auth | Ed25519 wallet signatures → JWT (HS256) |
 | Algorand SDK | py-algorand-sdk 2.6+, Atomic Transaction Composer |
 | Frontend | React + Vite + TypeScript (planned) |

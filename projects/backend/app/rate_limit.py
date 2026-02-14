@@ -45,7 +45,7 @@ _limiter = RateLimiter()
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Drop-in ASGI middleware — returns 429 when bucket is empty."""
 
-    RATE_LIMITED_PREFIXES = ("/auth/", "/admin/")
+    RATE_LIMITED_PREFIXES = ("/auth/", "/admin/", "/ai/")
 
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint

@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useSnackbar } from 'notistack'
 
 import { getTxStatus, registerTx } from '../lib/tx'
-import type { TxKind, TxStatus } from '../types/api'
+import type { TrackTxRequestPayload, TxKind, TxStatus } from '../types/api'
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -10,19 +10,20 @@ interface NotifyInput {
   txId: string
   kind: TxKind
   pendingLabel?: string
+  metadata?: Omit<TrackTxRequestPayload, 'tx_id' | 'kind'>
 }
 
 export const useTxToast = () => {
   const { enqueueSnackbar, closeSnackbar } = useSnackbar()
 
   const notifyTxLifecycle = useCallback(
-    async ({ txId, kind, pendingLabel }: NotifyInput): Promise<TxStatus> => {
+    async ({ txId, kind, pendingLabel, metadata }: NotifyInput): Promise<TxStatus> => {
       const pendingKey = enqueueSnackbar(pendingLabel ?? `Tracking tx ${txId}`, {
         variant: 'info',
         persist: true,
       })
 
-      await registerTx(txId, kind)
+      await registerTx(txId, kind, metadata)
       let latest: TxStatus = {
         tx_id: txId,
         kind,

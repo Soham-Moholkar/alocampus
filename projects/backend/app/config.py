@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # ── Algorand LocalNet ────────────────────────────────
+    # Algorand LocalNet
     algod_server: str = "http://localhost"
     algod_port: int = 4001
     algod_token: str = "a" * 64
@@ -22,21 +22,34 @@ class Settings(BaseSettings):
     kmd_port: int = 4002
     kmd_token: str = "a" * 64
 
-    # ── JWT ──────────────────────────────────────────────
+    # JWT
     jwt_secret: str = "algocampus-local-dev-secret-change-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
 
-    # ── Paths ────────────────────────────────────────────
+    # Paths / manifest
     app_manifest_path: str = "../contracts/smart_contracts/artifacts/app_manifest.json"
     db_path: str = ".data/algocampus.db"
 
-    # ── BFF base URL (for local metadata serving) ────────
+    # Scalable DB config
+    database_url: str = ""
+    sqlite_fallback_url: str = "sqlite+aiosqlite:///.data/algocampus.db"
+    db_pool_size: int = 20
+    db_max_overflow: int = 20
+    db_timeout_seconds: int = 30
+
+    # AI
+    ai_enabled: bool = False
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-1.5-flash"
+    gemini_timeout_seconds: int = 8
+    ai_auto_execute_low_risk: bool = True
+
+    # BFF base URL (for local metadata serving)
     bff_base_url: str = "http://localhost:8000"
 
     model_config = {"env_file": ".env.localnet", "env_file_encoding": "utf-8"}
 
-    # Convenience helpers ─────────────────────────────────
     @property
     def algod_url(self) -> str:
         return f"{self.algod_server}:{self.algod_port}"

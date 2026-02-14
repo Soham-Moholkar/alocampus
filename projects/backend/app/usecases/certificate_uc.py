@@ -24,6 +24,7 @@ from app.config import get_settings
 from app.domain.models import IssueCertRequest, IssueCertResponse
 from app.infra.algorand.client import get_algod, get_app_ids, get_localnet_default_account
 from app.infra.db.models import store_cert_metadata
+from app.usecases import activity_uc
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,15 @@ async def issue(req: IssueCertRequest) -> IssueCertResponse:
         recipient=req.recipient_address,
         asset_id=asset_id,
         metadata_json=json.dumps(arc3),
+    )
+
+    await activity_uc.log_event(
+        kind="cert_issued",
+        title="Certificate issued",
+        description=req.title,
+        actor=req.recipient_address,
+        tx_id=tx_id,
+        tags=[f"cert:{cert_hash_hex}"],
     )
 
     return IssueCertResponse(

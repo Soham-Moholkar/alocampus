@@ -1,0 +1,17 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" fill="none">
+  <defs>
+    <linearGradient id="gradStudentBg" x1="18" y1="20" x2="142" y2="146" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5D67E8"/>
+      <stop offset="1" stop-color="#2BC5A5"/>
+    </linearGradient>
+    <linearGradient id="gradStudentAccent" x1="56" y1="100" x2="110" y2="142" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDFEFF"/>
+      <stop offset="1" stop-color="#E6EEFF"/>
+    </linearGradient>
+  </defs>
+  <circle cx="80" cy="80" r="74" fill="url(#gradStudentBg)"/>
+  <circle cx="80" cy="62" r="22" fill="#F7FAFF"/>
+  <path d="M42 130c6-20 22-30 38-30 17 0 33 10 39 30" fill="url(#gradStudentAccent)"/>
+  <circle cx="127" cy="122" r="18" fill="#0F1B3D" opacity="0.92"/>
+  <path d="M119 122h16M127 114v16" stroke="#F7FAFF" stroke-width="2.6" stroke-linecap="round"/>
+</svg>

@@ -3,32 +3,13 @@ import { LoadingSkeleton } from '../../components/LoadingSkeleton'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { apiRequest } from '../../lib/api'
 import { endpoints } from '../../lib/endpoints'
-import type { AnalyticsSummary, PollListResponse, SessionListResponse } from '../../types/api'
-
-interface FeedbackEntry {
-  hash: string
-  txId: string
-}
-
-const feedbackEntries = (): FeedbackEntry[] => {
-  try {
-    const raw = localStorage.getItem('algocampus.feedback.entries')
-    if (!raw) {
-      return []
-    }
-    const parsed = JSON.parse(raw) as Array<{ hash: string; txId: string }>
-    return parsed.map((item) => ({ hash: item.hash, txId: item.txId }))
-  } catch {
-    return []
-  }
-}
+import type { AnalyticsSummary, FeedbackAggregateResponse, PollListResponse, SessionListResponse } from '../../types/api'
 
 export const FacultyAnalyticsPage = () => {
   const summary = useAsyncData(() => apiRequest<AnalyticsSummary>(endpoints.analyticsSummary), [])
   const polls = useAsyncData(() => apiRequest<PollListResponse>(endpoints.polls), [])
   const sessions = useAsyncData(() => apiRequest<SessionListResponse>(endpoints.sessions), [])
-
-  const feedback = feedbackEntries()
+  const feedback = useAsyncData(() => apiRequest<FeedbackAggregateResponse>(endpoints.feedbackAggregate), [])
 
   const bars = summary.data
     ? [
@@ -90,18 +71,25 @@ export const FacultyAnalyticsPage = () => {
       </Card>
 
       <Card title="Feedback Aggregates (hash-only)">
-        <p>Total commits (local browser): {feedback.length}</p>
-        {feedback.length > 0 ? (
-          <ul className="hash-list">
-            {feedback.slice(0, 10).map((item) => (
-              <li key={item.hash}>
-                <code>{item.hash}</code>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>No local feedback commitments found.</p>
-        )}
+        {feedback.loading ? <LoadingSkeleton rows={2} compact /> : null}
+        {feedback.error ? <p className="error-text">{feedback.error}</p> : null}
+        {feedback.data ? (
+          <>
+            <p>Total commits: {feedback.data.total_commits}</p>
+            <p>Unique authors: {feedback.data.unique_authors}</p>
+            {feedback.data.recent.length > 0 ? (
+              <ul className="hash-list">
+                {feedback.data.recent.slice(0, 10).map((item, index) => (
+                  <li key={`${item.id ?? index}`}>
+                    <code>{String(item.hash ?? '--')}</code>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No feedback commitments found.</p>
+            )}
+          </>
+        ) : null}
       </Card>
 
       <Card title="Dataset Sizes">

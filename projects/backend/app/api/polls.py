@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Annotated
 
-from app.domain.models import PollListResponse, PollResponse
-from app.usecases import polls_uc
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from app.auth import TokenPayload, require_faculty
+from app.domain.models import PollContextResponse, PollContextUpdateRequest, PollListResponse, PollResponse
+from app.usecases import announcements_uc, polls_uc
 
 router = APIRouter()
 
@@ -24,3 +27,20 @@ async def get_poll(poll_id: int) -> PollResponse:
     if result is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "poll not found")
     return result
+
+
+@router.get("/{poll_id}/context", response_model=PollContextResponse)
+async def get_poll_context(poll_id: int) -> PollContextResponse:
+    result = await announcements_uc.get_context(poll_id)
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "poll context not found")
+    return result
+
+
+@router.put("/{poll_id}/context", response_model=PollContextResponse)
+async def put_poll_context(
+    poll_id: int,
+    body: PollContextUpdateRequest,
+    user: Annotated[TokenPayload, Depends(require_faculty)],
+) -> PollContextResponse:
+    return await announcements_uc.upsert_context(poll_id, body, actor_address=user.address)

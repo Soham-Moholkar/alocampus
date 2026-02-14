@@ -27,7 +27,7 @@ def generate_all() -> None:
     for contract in get_contracts():
         spec = ARTIFACTS_DIR / contract.name / f"{contract.name}.arc32.json"
         if not spec.exists():
-            logger.warning("Skipping %s – spec not found at %s", contract.name, spec)
+            logger.warning("Skipping %s - spec not found at %s", contract.name, spec)
             continue
 
         out = FRONTEND_CONTRACTS / f"{contract.name}Client.ts"
@@ -46,7 +46,7 @@ def generate_all() -> None:
         if result.returncode != 0:
             logger.error(result.stderr)
             raise RuntimeError(f"Client generation failed for {contract.name}")
-        logger.info("  → %s", out)
+        logger.info("Generated: %s", out)
 
     logger.info("All typed clients generated.")
 

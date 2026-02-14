@@ -10,16 +10,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.rate_limit import RateLimitMiddleware
-from app.infra.db.database import init_db
+from app.infra.db.database import close_db, init_db
 from app.api import router as api_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup / shutdown hooks."""
-    settings = get_settings()
-    await init_db(settings.db_full_path)
-    yield  # app runs here
+    await init_db()
+    try:
+        yield  # app runs here
+    finally:
+        await close_db()
 
 
 def create_app() -> FastAPI:

@@ -8,8 +8,10 @@ import { TxStatus } from '../../components/TxStatus'
 import { useAuth } from '../../context/AuthContext'
 import { useTxToast } from '../../hooks/useTxToast'
 import { submitPaymentTxn } from '../../lib/abi'
+import { apiRequest } from '../../lib/api'
+import { endpoints } from '../../lib/endpoints'
 import { formatDateTime } from '../../lib/utils'
-import type { TxStatus as TxStatusModel } from '../../types/api'
+import type { FeedbackCommitResponse, TxStatus as TxStatusModel } from '../../types/api'
 
 interface FeedbackEntry {
   id: string
@@ -48,7 +50,7 @@ const hashFeedback = async (value: string): Promise<string> => {
 export const StudentFeedbackPage = () => {
   const { enqueueSnackbar } = useSnackbar()
   const { notifyTxLifecycle } = useTxToast()
-  const { address } = useAuth()
+  const { address, isAuthenticated } = useAuth()
   const { algodClient, signTransactions, activeAddress } = useWallet()
 
   const [course, setCourse] = useState('')
@@ -93,6 +95,21 @@ export const StudentFeedbackPage = () => {
         pendingLabel: `Feedback commit submitted (${txId})`,
       })
       setTxStatus(tracked)
+
+      if (isAuthenticated) {
+        await apiRequest<FeedbackCommitResponse>(endpoints.feedbackCommit, {
+          method: 'POST',
+          body: {
+            feedback_hash: hash,
+            course_code: course.trim(),
+            tx_id: txId,
+            metadata: {
+              source: 'student_feedback',
+              client_ts: Date.now(),
+            },
+          },
+        })
+      }
 
       const nextEntry: FeedbackEntry = {
         id: `${Date.now()}-${hash.slice(0, 8)}`,

@@ -1,4 +1,4 @@
-"""Compile all AlgoPy contracts into TEAL + ARC-32 app-spec artefacts."""
+"""Compile all AlgoPy contracts into TEAL + ARC-32 app-spec artifacts."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def build_all() -> None:
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     for contract in get_contracts():
         out = ARTIFACTS_DIR / contract.name
-        logger.info("Building %s → %s", contract.name, out)
+        logger.info("Building %s -> %s", contract.name, out)
         _build_one(contract.source_path, out)
     logger.info("All contracts built successfully.")
 

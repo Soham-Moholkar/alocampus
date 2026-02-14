@@ -8,6 +8,7 @@ from app.domain.models import CreateSessionRequest, SessionResponse, SessionList
 from app.infra.algorand.chain import create_session_on_chain
 from app.infra.algorand.client import get_app_ids
 from app.infra.db.models import insert_session, list_sessions, get_session
+from app.usecases import activity_uc
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,15 @@ async def create(req: CreateSessionRequest, creator: str) -> SessionResponse:
         creator=creator,
         app_id=app_id,
         tx_id=tx_id,
+    )
+
+    await activity_uc.log_event(
+        kind="session_created",
+        title=f"Session #{session_id} created",
+        description=req.course_code,
+        actor=creator,
+        tx_id=tx_id,
+        tags=[f"session:{session_id}"],
     )
 
     return SessionResponse(

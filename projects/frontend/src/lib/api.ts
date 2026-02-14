@@ -4,7 +4,7 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 interface RequestOptions {
   method?: HttpMethod
-  body?: unknown
+  body?: unknown | FormData
   auth?: boolean
   headers?: Record<string, string>
 }
@@ -55,8 +55,9 @@ export const apiRequest = async <T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> => {
+  const isFormDataBody = options.body instanceof FormData
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
     ...options.headers,
   }
 
@@ -70,14 +71,23 @@ export const apiRequest = async <T>(
   const response = await fetch(buildUrl(path), {
     method: options.method ?? 'GET',
     headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    body: options.body !== undefined ? (isFormDataBody ? options.body : JSON.stringify(options.body)) : undefined,
   })
 
   const payload = await parseResponse(response)
 
   if (response.status === 401) {
-    onUnauthorized()
-    throw new ApiError(401, 'Session expired. Please sign in again.', payload)
+    const detail =
+      typeof payload === 'object' && payload !== null && 'detail' in payload && typeof payload.detail === 'string'
+        ? payload.detail
+        : 'Unauthorized'
+
+    if (options.auth !== false) {
+      onUnauthorized()
+      throw new ApiError(401, 'Session expired. Please sign in again.', payload)
+    }
+
+    throw new ApiError(401, detail, payload)
   }
 
   if (!response.ok) {

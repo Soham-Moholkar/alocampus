@@ -49,6 +49,8 @@ class VotingContract(ARC4Contract):
 
         # ── voter de-dup  (key = poll_id‖voter_addr) ─────
         self.voter_flags = BoxMap(Bytes, arc4.Bool, key_prefix=b"vf")
+        self.ai_intent_expiry = BoxMap(Bytes, arc4.UInt64, key_prefix=b"aie")
+        self.ai_intent_used = BoxMap(Bytes, arc4.Bool, key_prefix=b"aiu")
 
     # ═══════════════════════════════════════════════════════
     # Lifecycle
@@ -90,6 +92,38 @@ class VotingContract(ARC4Contract):
             return True
         return arc4.Address(addr) in self.faculty_list
 
+    @arc4.abimethod
+    def record_ai_intent(
+        self,
+        intent_hash: arc4.DynamicBytes,
+        expires_round: arc4.UInt64,
+    ) -> arc4.Bool:
+        assert self._is_admin_or_faculty(Txn.sender), "not authorised"
+        assert expires_round.native >= Global.round, "already expired"
+        h = intent_hash.native
+        self.ai_intent_expiry[h] = expires_round
+        self.ai_intent_used[h] = arc4.Bool(False)
+        return arc4.Bool(True)
+
+    @arc4.abimethod
+    def cancel_ai_intent(self, intent_hash: arc4.DynamicBytes) -> arc4.Bool:
+        assert self._is_admin_or_faculty(Txn.sender), "not authorised"
+        h = intent_hash.native
+        assert h in self.ai_intent_expiry, "intent missing"
+        if h in self.ai_intent_used:
+            assert not self.ai_intent_used[h].native, "intent already used"
+            del self.ai_intent_used[h]
+        del self.ai_intent_expiry[h]
+        return arc4.Bool(True)
+
+    @subroutine
+    def _consume_ai_intent(self, intent_hash: Bytes) -> None:
+        assert intent_hash in self.ai_intent_expiry, "intent missing"
+        assert Global.round <= self.ai_intent_expiry[intent_hash].native, "intent expired"
+        if intent_hash in self.ai_intent_used:
+            assert not self.ai_intent_used[intent_hash].native, "intent already used"
+        self.ai_intent_used[intent_hash] = arc4.Bool(True)
+
     # ═══════════════════════════════════════════════════════
     # Poll CRUD
     # ═══════════════════════════════════════════════════════
@@ -111,14 +145,45 @@ class VotingContract(ARC4Contract):
         self.poll_counter = new_id
         pid = op.itob(new_id)
 
-        self.poll_questions[pid] = question.copy()
+        self.poll_questions[pid] = question
         self.poll_num_options[pid] = arc4.UInt64(num)
-        self.poll_start_round[pid] = start_round.copy()
-        self.poll_end_round[pid] = end_round.copy()
+        self.poll_start_round[pid] = start_round
+        self.poll_end_round[pid] = end_round
 
         for i in urange(num):
             key = pid + op.itob(i)
-            self.poll_options[key] = options[i].copy()
+            self.poll_options[key] = options[i]
+            self.vote_counts[key] = arc4.UInt64(0)
+
+        return arc4.UInt64(new_id)
+
+    @arc4.abimethod
+    def create_poll_ai(
+        self,
+        question: arc4.String,
+        options: arc4.DynamicArray[arc4.String],
+        start_round: arc4.UInt64,
+        end_round: arc4.UInt64,
+        intent_hash: arc4.DynamicBytes,
+    ) -> arc4.UInt64:
+        assert self._is_admin_or_faculty(Txn.sender), "not authorised"
+        self._consume_ai_intent(intent_hash.native)
+        assert start_round.native < end_round.native, "bad round range"
+        num = options.length
+        assert num >= UInt64(2), "need >=2 options"
+
+        new_id = self.poll_counter + UInt64(1)
+        self.poll_counter = new_id
+        pid = op.itob(new_id)
+
+        self.poll_questions[pid] = question
+        self.poll_num_options[pid] = arc4.UInt64(num)
+        self.poll_start_round[pid] = start_round
+        self.poll_end_round[pid] = end_round
+
+        for i in urange(num):
+            key = pid + op.itob(i)
+            self.poll_options[key] = options[i]
             self.vote_counts[key] = arc4.UInt64(0)
 
         return arc4.UInt64(new_id)
@@ -177,10 +242,10 @@ class VotingContract(ARC4Contract):
         assert pid in self.poll_questions, "poll not found"
         return arc4.Tuple(
             (
-                self.poll_questions[pid].copy(),
-                self.poll_num_options[pid].copy(),
-                self.poll_start_round[pid].copy(),
-                self.poll_end_round[pid].copy(),
+                self.poll_questions[pid],
+                self.poll_num_options[pid],
+                self.poll_start_round[pid],
+                self.poll_end_round[pid],
             )
         )
 
@@ -192,4 +257,4 @@ class VotingContract(ARC4Contract):
         pid = op.itob(poll_id.native)
         key = pid + op.itob(option_index.native)
         assert key in self.vote_counts, "no such option"
-        return self.vote_counts[key].copy()
+        return self.vote_counts[key]

@@ -14,7 +14,7 @@ import { useSnackbar } from 'notistack'
 
 import { ApiError, apiRequest, configureApiAuth } from '../lib/api'
 import { endpoints } from '../lib/endpoints'
-import { clearSession, loadSession, saveSession } from '../lib/storage'
+import { clearPreviewSession, clearSession, loadSession, saveSession } from '../lib/storage'
 import { toBase64 } from '../lib/utils'
 import type { MeResponse, NonceResponse, Role, VerifyResponse } from '../types/api'
 
@@ -29,7 +29,7 @@ interface AuthContextValue {
   activeWalletId: string | null
   connectWallet: (walletId: string) => Promise<void>
   disconnectWallet: () => Promise<void>
-  signIn: () => Promise<void>
+  signIn: (options?: { redirect?: boolean; clearPreview?: boolean; notify?: boolean }) => Promise<MeResponse>
   logout: (reason?: string, redirectToConnect?: boolean) => Promise<void>
   refreshProfile: () => Promise<void>
 }
@@ -54,6 +54,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true)
 
   const jwtRef = useRef<string | null>(null)
+  const unauthorizedToastAt = useRef(0)
 
   const logout = useCallback(
     async (reason?: string, redirectToConnect = true): Promise<void> => {
@@ -87,6 +88,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     configureApiAuth(
       () => jwtRef.current,
       () => {
+        const now = Date.now()
+        if (now - unauthorizedToastAt.current < 2500) {
+          return
+        }
+        unauthorizedToastAt.current = now
         void logout('Session expired. Please sign in again.', true)
       },
     )
@@ -147,13 +153,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await logout('Wallet disconnected', true)
   }, [activeWallet, logout])
 
-  const signIn = useCallback(async (): Promise<void> => {
+  const signIn = useCallback(async (
+    options?: { redirect?: boolean; clearPreview?: boolean; notify?: boolean },
+  ): Promise<MeResponse> => {
+    const redirect = options?.redirect ?? true
+    const clearPreview = options?.clearPreview ?? true
+    const notify = options?.notify ?? true
+
     if (!activeAddress) {
       throw new Error('Connect wallet first')
-    }
-
-    if (!activeWallet?.canSignData) {
-      throw new Error('Selected wallet does not support message signing')
     }
 
     const nonceRes = await apiRequest<NonceResponse>(endpoints.authNonce, {
@@ -163,10 +171,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     })
 
     const message = nonceMessage(nonceRes.nonce)
-    const signResult = await signData(message, {
-      scope: ScopeType.AUTH,
-      encoding: 'utf-8',
-    })
+    let signResult
+    try {
+      signResult = await signData(message, {
+        scope: ScopeType.AUTH,
+        encoding: 'utf-8',
+      })
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'Unknown signing error'
+      throw new Error(`Message signing failed: ${reason}`)
+    }
 
     const signature = toBase64(signResult.signature)
 
@@ -182,22 +196,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     setJwt(verifyRes.jwt)
     jwtRef.current = verifyRes.jwt
+    if (clearPreview) {
+      clearPreviewSession()
+    }
 
     const profile = await apiRequest<MeResponse>(endpoints.me)
     setRole(profile.role)
     setAddress(profile.address)
 
     saveSession(verifyRes.jwt, profile.role, profile.address)
-    enqueueSnackbar('Signed in successfully', { variant: 'success' })
-
-    if (profile.role === 'admin') {
-      navigate('/admin/dashboard', { replace: true })
-    } else if (profile.role === 'faculty') {
-      navigate('/faculty/dashboard', { replace: true })
-    } else {
-      navigate('/student/dashboard', { replace: true })
+    if (notify) {
+      enqueueSnackbar('Signed in successfully', { variant: 'success' })
     }
-  }, [activeAddress, activeWallet?.canSignData, enqueueSnackbar, navigate, signData])
+
+    if (redirect) {
+      if (profile.role === 'admin') {
+        navigate('/admin/dashboard', { replace: true })
+      } else if (profile.role === 'faculty') {
+        navigate('/faculty/dashboard', { replace: true })
+      } else {
+        navigate('/student/dashboard', { replace: true })
+      }
+    }
+
+    return profile
+  }, [activeAddress, enqueueSnackbar, navigate, signData])
 
   useEffect(() => {
     if (!activeWallet || !activeWallet.isConnected) {

@@ -23,8 +23,16 @@ def _get_algod() -> AlgodClient:
     """Create an algod client pointing at LocalNet."""
     return algokit_utils.get_algod_client(
         algokit_utils.AlgoClientConfig(
-            server="http://localhost",
-            port=4001,
+            server="http://localhost:4001",
+            token="a" * 64,
+        )
+    )
+
+
+def _get_indexer():
+    return algokit_utils.get_indexer_client(
+        algokit_utils.AlgoClientConfig(
+            server="http://localhost:8980",
             token="a" * 64,
         )
     )
@@ -32,6 +40,7 @@ def _get_algod() -> AlgodClient:
 
 def _deploy_one(
     algod_client: AlgodClient,
+    indexer_client,
     deployer: algokit_utils.Account,
     name: str,
 ) -> int:
@@ -45,7 +54,9 @@ def _deploy_one(
 
     app_client = algokit_utils.ApplicationClient(
         algod_client=algod_client,
+        indexer_client=indexer_client,
         app_spec=app_spec,
+        creator=deployer.address,
         signer=deployer.signer,
         sender=deployer.address,
     )
@@ -58,7 +69,7 @@ def _deploy_one(
     )
 
     logger.info(
-        "  ✔ %s deployed — app_id=%s  app_addr=%s",
+        "Deployed %s - app_id=%s app_addr=%s",
         name,
         app_client.app_id,
         app_client.app_address,
@@ -72,16 +83,16 @@ def deploy_all() -> None:
     load_dotenv(ENV_FILE)
 
     algod_client = _get_algod()
+    indexer_client = _get_indexer()
     deployer = algokit_utils.get_localnet_default_account(algod_client)
 
     logger.info("Deployer: %s", deployer.address)
 
     deployed: dict[str, int] = {}
     for contract in get_contracts():
-        app_id = _deploy_one(algod_client, deployer, contract.name)
+        app_id = _deploy_one(algod_client, indexer_client, deployer, contract.name)
         deployed[contract.name] = app_id
 
-    # Write a small manifest so the BFF can discover app IDs
     manifest_path = ARTIFACTS_DIR / "app_manifest.json"
     manifest_path.write_text(json.dumps(deployed, indent=2))
     logger.info("Manifest written to %s", manifest_path)

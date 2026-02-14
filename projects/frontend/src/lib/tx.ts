@@ -1,6 +1,6 @@
 import { apiRequest } from './api'
 import { endpoints } from './endpoints'
-import type { TxKind, TxStatus } from '../types/api'
+import type { TrackTxRequestPayload, TxKind, TxStatus } from '../types/api'
 
 interface TrackOptions {
   intervalMs?: number
@@ -9,12 +9,17 @@ interface TrackOptions {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-export const registerTx = async (txId: string, kind: TxKind): Promise<TxStatus> =>
+export const registerTx = async (
+  txId: string,
+  kind: TxKind,
+  metadata?: Omit<TrackTxRequestPayload, 'tx_id' | 'kind'>,
+): Promise<TxStatus> =>
   apiRequest<TxStatus>(endpoints.txTrack, {
     method: 'POST',
     body: {
       tx_id: txId,
       kind,
+      ...(metadata ?? {}),
     },
   })
 
@@ -25,8 +30,9 @@ export const trackTxToFinalState = async (
   txId: string,
   kind: TxKind,
   options: TrackOptions = {},
+  metadata?: Omit<TrackTxRequestPayload, 'tx_id' | 'kind'>,
 ): Promise<TxStatus> => {
-  await registerTx(txId, kind)
+  await registerTx(txId, kind, metadata)
   const attempts = options.maxAttempts ?? 20
   const interval = options.intervalMs ?? 2000
 

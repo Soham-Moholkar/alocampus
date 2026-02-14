@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-
-# ── Roles ────────────────────────────────────────────────
 
 class Role(str, Enum):
     ADMIN = "admin"
@@ -16,8 +14,7 @@ class Role(str, Enum):
     STUDENT = "student"
 
 
-# ── Auth ─────────────────────────────────────────────────
-
+# Auth
 class NonceRequest(BaseModel):
     address: str = Field(..., min_length=58, max_length=58)
 
@@ -29,7 +26,7 @@ class NonceResponse(BaseModel):
 class VerifyRequest(BaseModel):
     address: str = Field(..., min_length=58, max_length=58)
     nonce: str
-    signature: str  # base64-encoded ed25519 sig
+    signature: str
 
 
 class TokenResponse(BaseModel):
@@ -41,8 +38,7 @@ class MeResponse(BaseModel):
     role: str
 
 
-# ── Admin ────────────────────────────────────────────────
-
+# Admin
 class SetRoleRequest(BaseModel):
     address: str = Field(..., min_length=58, max_length=58)
     role: Role
@@ -53,22 +49,23 @@ class SetRoleResponse(BaseModel):
     message: str
 
 
-# ── Transaction tracking ─────────────────────────────────
-
+# Transaction tracking
 class TrackTxRequest(BaseModel):
     tx_id: str = Field(..., min_length=52, max_length=52)
-    kind: str = Field(..., pattern=r"^(vote|checkin|cert|deposit|other)$")
+    kind: str = Field(..., pattern=r"^(vote|checkin|cert|deposit|feedback|coordination|ai|other)$")
+    session_id: int | None = Field(default=None, ge=0)
+    course_code: str | None = Field(default=None, min_length=1, max_length=64)
+    student_address: str | None = Field(default=None, min_length=58, max_length=58)
 
 
 class TxStatus(BaseModel):
     tx_id: str
     kind: str
-    status: str  # pending | confirmed | failed
+    status: str
     confirmed_round: Optional[int] = None
 
 
-# ── Analytics ────────────────────────────────────────────
-
+# Analytics
 class AnalyticsSummary(BaseModel):
     total_polls: int = 0
     total_votes: int = 0
@@ -77,8 +74,7 @@ class AnalyticsSummary(BaseModel):
     total_certs: int = 0
 
 
-# ── Polls ────────────────────────────────────────────────
-
+# Polls
 class CreatePollRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500)
     options: list[str] = Field(..., min_length=2, max_length=10)
@@ -103,8 +99,7 @@ class PollListResponse(BaseModel):
     count: int
 
 
-# ── Attendance sessions ──────────────────────────────────
-
+# Sessions
 class CreateSessionRequest(BaseModel):
     course_code: str = Field(..., min_length=1, max_length=50)
     session_ts: int = Field(..., ge=0)
@@ -129,8 +124,7 @@ class SessionListResponse(BaseModel):
     count: int
 
 
-# ── Certificate issuance ─────────────────────────────────
-
+# Certificates
 class IssueCertRequest(BaseModel):
     recipient_address: str = Field(..., min_length=58, max_length=58)
     recipient_name: str = Field(..., min_length=1, max_length=200)
@@ -168,11 +162,240 @@ class CertVerifyResponse(BaseModel):
     message: str = ""
 
 
-# ── Metadata (ARC-3) ────────────────────────────────────
-
 class ARC3Metadata(BaseModel):
-    """Minimal ARC-3 compatible metadata served locally."""
     name: str
     description: str
     image: str = ""
     properties: dict = Field(default_factory=dict)
+
+
+# Profiles
+class UserProfileResponse(BaseModel):
+    address: str
+    display_name: str | None = None
+    avatar_url: str | None = None
+    avatar_hash: str | None = None
+    avatar_anchor_tx_id: str | None = None
+    updated: float | None = None
+
+
+class AvatarUploadResponse(BaseModel):
+    ok: bool
+    message: str
+    profile: UserProfileResponse
+
+
+# Activity
+class ActivityItem(BaseModel):
+    id: str
+    kind: str
+    title: str
+    description: str = ""
+    actor: str | None = None
+    tx_id: str | None = None
+    created: float
+    tags: list[str] = Field(default_factory=list)
+
+
+class ActivityListResponse(BaseModel):
+    items: list[ActivityItem]
+    count: int
+
+
+# System health
+class SystemHealthComponent(BaseModel):
+    status: Literal["ok", "degraded", "error"]
+    detail: str = ""
+
+
+class SystemHealthResponse(BaseModel):
+    status: Literal["ok", "degraded", "error"]
+    service: str = "algocampus-bff"
+    backend: str
+    bff: SystemHealthComponent
+    db: SystemHealthComponent
+    algod: SystemHealthComponent
+    indexer: SystemHealthComponent
+    kmd: SystemHealthComponent
+
+
+# Feedback
+class FeedbackCommitRequest(BaseModel):
+    feedback_hash: str = Field(..., min_length=64, max_length=128)
+    course_code: str = Field(default="", max_length=64)
+    tx_id: str | None = Field(default=None, min_length=52, max_length=52)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class FeedbackCommitResponse(BaseModel):
+    ok: bool
+    id: str
+    message: str
+
+
+class FeedbackAggregateResponse(BaseModel):
+    total_commits: int
+    unique_authors: int
+    recent: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# Coordination
+class CoordinationTaskCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+
+
+class CoordinationTaskResponse(BaseModel):
+    task_id: str
+    title: str
+    description: str
+    owner: str
+    status: str
+    payload_hash: str | None = None
+    anchor_tx_id: str | None = None
+    created: float
+    updated: float
+
+
+class CoordinationTaskListResponse(BaseModel):
+    tasks: list[CoordinationTaskResponse]
+    count: int
+
+
+class CoordinationAnchorRequest(BaseModel):
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class CoordinationVerifyResponse(BaseModel):
+    task_id: str
+    verified: bool
+    payload_hash: str | None = None
+    anchor_tx_id: str | None = None
+    message: str = ""
+
+
+# AI
+class AiRiskLevel(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class AiExecutionMode(str, Enum):
+    AUTO = "auto"
+    APPROVAL_REQUIRED = "approval_required"
+
+
+class AiActionType(str, Enum):
+    FACULTY_POLL = "faculty_poll_plan"
+    FACULTY_SESSION = "faculty_session_plan"
+    FACULTY_CERT = "faculty_certificate_plan"
+    ADMIN_ROLE_RISK = "admin_role_risk_plan"
+    ADMIN_SYSTEM = "admin_system_remediation_plan"
+    COORD_TASK = "coordination_task_plan"
+
+
+class AiPlanRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=5000)
+    context: dict[str, Any] = Field(default_factory=dict)
+    auto_execute: bool = False
+
+
+class AiPlanResponse(BaseModel):
+    intent_id: str
+    intent_hash: str
+    action_type: AiActionType
+    risk_level: AiRiskLevel
+    execution_mode: AiExecutionMode
+    plan: dict[str, Any] = Field(default_factory=dict)
+    message: str = ""
+
+
+class AiExecuteResponse(BaseModel):
+    intent_id: str
+    status: str
+    risk_level: AiRiskLevel
+    execution_mode: AiExecutionMode
+    tx_id: str | None = None
+    confirmed_round: int | None = None
+    message: str = ""
+
+
+# Announcements + poll context
+class AnnouncementCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    body: str = Field(..., min_length=1, max_length=4000)
+    poll_id: int | None = Field(default=None, ge=0)
+    category: str = Field(default="general", min_length=1, max_length=64)
+    audience: str = Field(default="all", min_length=1, max_length=32)
+    is_pinned: bool = False
+
+
+class AnnouncementUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    body: str | None = Field(default=None, min_length=1, max_length=4000)
+    category: str | None = Field(default=None, min_length=1, max_length=64)
+    audience: str | None = Field(default=None, min_length=1, max_length=32)
+    is_pinned: bool | None = None
+
+
+class AnnouncementResponse(BaseModel):
+    id: str
+    title: str
+    body: str
+    poll_id: int | None = None
+    category: str
+    audience: str
+    author_address: str
+    author_role: str
+    is_pinned: bool = False
+    hash: str
+    anchor_tx_id: str | None = None
+    created: float
+    updated: float
+
+
+class AnnouncementListResponse(BaseModel):
+    items: list[AnnouncementResponse]
+    count: int
+
+
+class PollContextUpdateRequest(BaseModel):
+    purpose: str = Field(..., min_length=1, max_length=1500)
+    audience: str = Field(..., min_length=1, max_length=64)
+    category: str = Field(..., min_length=1, max_length=64)
+    extra_note: str = Field(default="", max_length=2000)
+
+
+class PollContextResponse(BaseModel):
+    poll_id: int
+    purpose: str
+    audience: str
+    category: str
+    extra_note: str
+    updated_by: str
+    hash: str
+    anchor_tx_id: str | None = None
+    updated: float
+
+
+# Attendance records
+class AttendanceRecordResponse(BaseModel):
+    id: str
+    session_id: int
+    course_code: str
+    student_address: str
+    status: str
+    tx_id: str | None = None
+    anchor_tx_id: str | None = None
+    attended_at: float
+    created: float
+
+
+class AttendanceRecordListResponse(BaseModel):
+    records: list[AttendanceRecordResponse]
+    count: int
+
+
+class AttendanceRecordStatusUpdateRequest(BaseModel):
+    status: str = Field(..., pattern=r"^(present|absent|late|excused)$")

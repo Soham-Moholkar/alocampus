@@ -40,6 +40,8 @@ class AttendanceContract(ARC4Contract):
 
         # ── roster (key = session_id‖student_addr) ───────
         self.roster = BoxMap(Bytes, arc4.Bool, key_prefix=b"r")
+        self.ai_intent_expiry = BoxMap(Bytes, arc4.UInt64, key_prefix=b"aie")
+        self.ai_intent_used = BoxMap(Bytes, arc4.Bool, key_prefix=b"aiu")
 
     # ═══════════════════════════════════════════════════════
     # Lifecycle
@@ -81,6 +83,38 @@ class AttendanceContract(ARC4Contract):
             return True
         return arc4.Address(addr) in self.faculty_list
 
+    @arc4.abimethod
+    def record_ai_intent(
+        self,
+        intent_hash: arc4.DynamicBytes,
+        expires_round: arc4.UInt64,
+    ) -> arc4.Bool:
+        assert self._is_admin_or_faculty(Txn.sender), "not authorised"
+        assert expires_round.native >= Global.round, "already expired"
+        h = intent_hash.native
+        self.ai_intent_expiry[h] = expires_round
+        self.ai_intent_used[h] = arc4.Bool(False)
+        return arc4.Bool(True)
+
+    @arc4.abimethod
+    def cancel_ai_intent(self, intent_hash: arc4.DynamicBytes) -> arc4.Bool:
+        assert self._is_admin_or_faculty(Txn.sender), "not authorised"
+        h = intent_hash.native
+        assert h in self.ai_intent_expiry, "intent missing"
+        if h in self.ai_intent_used:
+            assert not self.ai_intent_used[h].native, "intent already used"
+            del self.ai_intent_used[h]
+        del self.ai_intent_expiry[h]
+        return arc4.Bool(True)
+
+    @subroutine
+    def _consume_ai_intent(self, intent_hash: Bytes) -> None:
+        assert intent_hash in self.ai_intent_expiry, "intent missing"
+        assert Global.round <= self.ai_intent_expiry[intent_hash].native, "intent expired"
+        if intent_hash in self.ai_intent_used:
+            assert not self.ai_intent_used[intent_hash].native, "intent already used"
+        self.ai_intent_used[intent_hash] = arc4.Bool(True)
+
     # ═══════════════════════════════════════════════════════
     # Session management
     # ═══════════════════════════════════════════════════════
@@ -101,10 +135,35 @@ class AttendanceContract(ARC4Contract):
         self.session_counter = new_id
         sid = op.itob(new_id)
 
-        self.session_course[sid] = course_code.copy()
-        self.session_ts[sid] = session_ts.copy()
-        self.session_open[sid] = open_round.copy()
-        self.session_close[sid] = close_round.copy()
+        self.session_course[sid] = course_code
+        self.session_ts[sid] = session_ts
+        self.session_open[sid] = open_round
+        self.session_close[sid] = close_round
+
+        return arc4.UInt64(new_id)
+
+    @arc4.abimethod
+    def create_session_ai(
+        self,
+        course_code: arc4.String,
+        session_ts: arc4.UInt64,
+        open_round: arc4.UInt64,
+        close_round: arc4.UInt64,
+        intent_hash: arc4.DynamicBytes,
+    ) -> arc4.UInt64:
+        """AI-assisted session creation with on-chain intent consumption."""
+        assert self._is_admin_or_faculty(Txn.sender), "not authorised"
+        self._consume_ai_intent(intent_hash.native)
+        assert open_round.native < close_round.native, "bad round range"
+
+        new_id = self.session_counter + UInt64(1)
+        self.session_counter = new_id
+        sid = op.itob(new_id)
+
+        self.session_course[sid] = course_code
+        self.session_ts[sid] = session_ts
+        self.session_open[sid] = open_round
+        self.session_close[sid] = close_round
 
         return arc4.UInt64(new_id)
 
@@ -147,9 +206,9 @@ class AttendanceContract(ARC4Contract):
         assert sid in self.session_course, "session not found"
         return arc4.Tuple(
             (
-                self.session_course[sid].copy(),
-                self.session_ts[sid].copy(),
-                self.session_open[sid].copy(),
-                self.session_close[sid].copy(),
+                self.session_course[sid],
+                self.session_ts[sid],
+                self.session_open[sid],
+                self.session_close[sid],
             )
         )
