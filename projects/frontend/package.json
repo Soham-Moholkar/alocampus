@@ -1,0 +1,28 @@
+{
+  "name": "algocampus-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "dev:localnet": "vite --mode localnet",
+    "build:localnet": "vite build --mode localnet"
+  },
+  "dependencies": {
+    "@txnlab/use-wallet-react": "^4.5.0",
+    "algosdk": "^3.5.2",
+    "notistack": "^3.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.21",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "^5.8.2",
+    "vite": "^6.3.5"
+  }
+}

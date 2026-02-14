@@ -507,6 +507,18 @@ poetry run python -m smart_contracts.helpers.generate_clients
 
 ---
 
+## Frontend Endpoint Mapping TODO
+
+Current frontend endpoint map is centralized at `projects/frontend/src/lib/endpoints.ts`.
+Detected naming mismatches and fallbacks:
+
+- `GET /me` expected by UI spec maps to backend `GET /auth/me`.
+- `POST /cert/issue` expected by UI spec maps to backend `POST /faculty/cert/issue`.
+- `GET /activity` is not present in backend; frontend falls back to a synthetic activity feed built from `/polls`, `/attendance/sessions`, and `/certs`.
+- `GET /system/health` is not present in backend; frontend falls back to `/health` plus `/analytics/summary`.
+
+---
+
 ## Known Issues & Fixes
 
 | Issue | Cause | Fix |
