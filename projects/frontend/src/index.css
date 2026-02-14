@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+/* ── AlgoCampus Design System (Fintech Light Theme) ──────────────── */
+
+@theme {
+  /* Core Colors */
+  --color-primary: #111827;
+  /* Dark almost black for primary actions */
+  --color-primary-light: #374151;
+  --color-primary-dark: #000000;
+
+  --color-accent: #6366f1;
+  /* Indigo for highlights */
+  --color-accent-light: #818cf8;
+
+  /* Backgrounds */
+  --color-surface: #F9FAFB;
+  /* Light grey background for main area */
+  --color-surface-light: #FFFFFF;
+  /* White for cards */
+  --color-sidebar: #111827;
+  /* Dark sidebar */
+
+  /* Text */
+  --color-text: #111827;
+  /* Dark text */
+  --color-text-secondary: #6B7280;
+  /* Grey text */
+  --color-text-muted: #9CA3AF;
+  /* Light grey text */
+  --color-text-on-dark: #F3F4F6;
+  /* Light text for sidebar */
+  --color-text-sidebar-muted: #9CA3AF;
+
+  /* Status */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+
+  /* Wallet Card Colors */
+  --color-card-purple: #E0E7FF;
+  /* Light indigo */
+  --color-card-purple-text: #312E81;
+  --color-card-pink: #FCE7F3;
+  /* Light pink */
+  --color-card-pink-text: #831843;
+  --color-card-grey: #F3F4F6;
+  --color-card-grey-text: #1F2937;
+
+  /* Fonts */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Border Radius */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-text-muted) transparent;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+}
+
+/* Utilities for the clean look */
+.shadow-soft {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.shadow-card {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}

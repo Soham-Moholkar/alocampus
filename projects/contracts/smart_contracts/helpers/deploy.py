@@ -9,6 +9,7 @@ from pathlib import Path
 
 import algokit_utils
 from algosdk.v2client.algod import AlgodClient
+from algosdk.v2client.indexer import IndexerClient
 from dotenv import load_dotenv
 
 from smart_contracts.config import get_contracts
@@ -23,8 +24,17 @@ def _get_algod() -> AlgodClient:
     """Create an algod client pointing at LocalNet."""
     return algokit_utils.get_algod_client(
         algokit_utils.AlgoClientConfig(
-            server="http://localhost",
-            port=4001,
+            server="http://localhost:4001",
+            token="a" * 64,
+        )
+    )
+
+
+def _get_indexer() -> IndexerClient:
+    """Create an indexer client pointing at LocalNet."""
+    return algokit_utils.get_indexer_client(
+        algokit_utils.AlgoClientConfig(
+            server="http://localhost:8980",
             token="a" * 64,
         )
     )
@@ -32,6 +42,7 @@ def _get_algod() -> AlgodClient:
 
 def _deploy_one(
     algod_client: AlgodClient,
+    indexer_client: IndexerClient,
     deployer: algokit_utils.Account,
     name: str,
 ) -> int:
@@ -48,6 +59,8 @@ def _deploy_one(
         app_spec=app_spec,
         signer=deployer.signer,
         sender=deployer.address,
+        creator=deployer,
+        indexer_client=indexer_client,
     )
 
     app_client.deploy(
@@ -72,13 +85,14 @@ def deploy_all() -> None:
     load_dotenv(ENV_FILE)
 
     algod_client = _get_algod()
+    indexer_client = _get_indexer()
     deployer = algokit_utils.get_localnet_default_account(algod_client)
 
     logger.info("Deployer: %s", deployer.address)
 
     deployed: dict[str, int] = {}
     for contract in get_contracts():
-        app_id = _deploy_one(algod_client, deployer, contract.name)
+        app_id = _deploy_one(algod_client, indexer_client, deployer, contract.name)
         deployed[contract.name] = app_id
 
     # Write a small manifest so the BFF can discover app IDs

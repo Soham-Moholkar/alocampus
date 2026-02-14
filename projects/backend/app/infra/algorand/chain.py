@@ -1,6 +1,7 @@
 """High-level helpers for BFF → on-chain ABI calls via ATC (LocalNet dev account).
 
 All calls use the KMD dev account as sender (it is the contract admin post-deploy).
+Includes automatic retry with exponential backoff for transient network errors.
 """
 
 from __future__ import annotations
@@ -13,10 +14,24 @@ from algosdk.atomic_transaction_composer import (
     AccountTransactionSigner,
     AtomicTransactionComposer,
 )
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.infra.algorand.client import get_algod, get_app_ids, get_localnet_default_account
 
 logger = logging.getLogger(__name__)
+
+# ── Retry configuration ─────────────────────────────────
+
+_RETRY_DECORATOR = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
+    reraise=True,
+    before_sleep=lambda rs: logger.warning(
+        "Algorand call failed (attempt %d), retrying in %.1fs...",
+        rs.attempt_number, rs.next_action.sleep,
+    ),
+)
 
 # ── Cached ABI method objects ────────────────────────────
 
@@ -33,6 +48,7 @@ _SET_FACULTY = Method.from_signature("set_faculty(address,bool)void")
 # ── Helpers ──────────────────────────────────────────────
 
 
+@_RETRY_DECORATOR
 def _atc_call(app_id: int, method: Method, args: list[Any], *, wait: int = 4) -> Any:
     """Execute a single ABI method call via ATC using the dev account.
 

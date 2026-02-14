@@ -95,9 +95,9 @@ class CertificateRegistryContract(ARC4Contract):
         h = cert_hash.native
         assert h not in self.cert_recipient, "already registered"
 
-        self.cert_recipient[h] = recipient.copy()
-        self.cert_asset[h] = asset_id.copy()
-        self.cert_ts[h] = issued_ts.copy()
+        self.cert_recipient[h] = recipient
+        self.cert_asset[h] = asset_id
+        self.cert_ts[h] = issued_ts
         return arc4.Bool(True)  # noqa: FBT003
 
     @arc4.abimethod
@@ -111,9 +111,9 @@ class CertificateRegistryContract(ARC4Contract):
         """Admin-only: overwrite an existing certificate entry."""
         assert self._is_admin(Txn.sender), "only admin"
         h = cert_hash.native
-        self.cert_recipient[h] = recipient.copy()
-        self.cert_asset[h] = asset_id.copy()
-        self.cert_ts[h] = issued_ts.copy()
+        self.cert_recipient[h] = recipient
+        self.cert_asset[h] = asset_id
+        self.cert_ts[h] = issued_ts
         return arc4.Bool(True)  # noqa: FBT003
 
     # ═══════════════════════════════════════════════════════
@@ -152,9 +152,9 @@ class CertificateRegistryContract(ARC4Contract):
         asset_id = result.created_asset.id
 
         # Register on-chain
-        self.cert_recipient[h] = recipient.copy()
+        self.cert_recipient[h] = recipient
         self.cert_asset[h] = arc4.UInt64(asset_id)
-        self.cert_ts[h] = issued_ts.copy()
+        self.cert_ts[h] = issued_ts
 
         return arc4.UInt64(asset_id)
 
@@ -171,8 +171,8 @@ class CertificateRegistryContract(ARC4Contract):
         assert h in self.cert_recipient, "cert not found"
         return arc4.Tuple(
             (
-                self.cert_recipient[h].copy(),
-                self.cert_asset[h].copy(),
-                self.cert_ts[h].copy(),
+                self.cert_recipient[h],
+                self.cert_asset[h],
+                self.cert_ts[h],
             )
         )

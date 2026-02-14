@@ -111,14 +111,14 @@ class VotingContract(ARC4Contract):
         self.poll_counter = new_id
         pid = op.itob(new_id)
 
-        self.poll_questions[pid] = question.copy()
+        self.poll_questions[pid] = question
         self.poll_num_options[pid] = arc4.UInt64(num)
-        self.poll_start_round[pid] = start_round.copy()
-        self.poll_end_round[pid] = end_round.copy()
+        self.poll_start_round[pid] = start_round
+        self.poll_end_round[pid] = end_round
 
         for i in urange(num):
             key = pid + op.itob(i)
-            self.poll_options[key] = options[i].copy()
+            self.poll_options[key] = options[i]
             self.vote_counts[key] = arc4.UInt64(0)
 
         return arc4.UInt64(new_id)
@@ -177,10 +177,10 @@ class VotingContract(ARC4Contract):
         assert pid in self.poll_questions, "poll not found"
         return arc4.Tuple(
             (
-                self.poll_questions[pid].copy(),
-                self.poll_num_options[pid].copy(),
-                self.poll_start_round[pid].copy(),
-                self.poll_end_round[pid].copy(),
+                self.poll_questions[pid],
+                self.poll_num_options[pid],
+                self.poll_start_round[pid],
+                self.poll_end_round[pid],
             )
         )
 
@@ -192,4 +192,4 @@ class VotingContract(ARC4Contract):
         pid = op.itob(poll_id.native)
         key = pid + op.itob(option_index.native)
         assert key in self.vote_counts, "no such option"
-        return self.vote_counts[key].copy()
+        return self.vote_counts[key]

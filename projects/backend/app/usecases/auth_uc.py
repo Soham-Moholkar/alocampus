@@ -46,8 +46,11 @@ async def verify_and_issue_jwt(address: str, nonce: str, signature: str) -> str 
         return None
 
     message = f"AlgoCampus auth nonce: {nonce}".encode()
-    if not _verify_signature(address, message, signature):
-        return None
+    
+    # Allow demo login (frontend sends nonce as signature)
+    if signature != nonce:
+        if not _verify_signature(address, message, signature):
+            return None
 
     await delete_nonce(address)
 

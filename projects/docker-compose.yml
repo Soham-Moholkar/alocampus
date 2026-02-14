@@ -1,0 +1,81 @@
+# ── AlgoCampus Docker Compose ──────────────────────────────
+# Usage:
+#   docker-compose up -d          # start all services
+#   docker-compose logs -f backend # tail backend logs
+#   docker-compose down           # stop everything
+
+version: "3.9"
+
+services:
+  # ── Algorand LocalNet (algod + indexer + KMD) ──────────
+  # Uses AlgoKit's official LocalNet image
+  algod:
+    image: algorand/algod:latest
+    ports:
+      - "4001:4001" # algod HTTP
+      - "4002:4002" # KMD
+    environment:
+      - START_KMD=1
+      - TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      - KMD_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    volumes:
+      - algod-data:/algod/data
+
+    networks:
+      - algocampus
+
+  indexer:
+    image: algorand/indexer:latest
+    ports:
+      - "8980:8980"
+    depends_on:
+      - algod
+    environment:
+      - INDEXER_ALGOD_ADDRESS=http://algod:4001
+      - INDEXER_ALGOD_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    networks:
+      - algocampus
+
+  # ── Backend (BFF API) ─────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - algod
+      - indexer
+    environment:
+      - ALGOD_SERVER=http://algod
+      - ALGOD_PORT=4001
+      - ALGOD_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      - INDEXER_SERVER=http://indexer
+      - INDEXER_PORT=8980
+      - INDEXER_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      - KMD_SERVER=http://algod
+      - KMD_PORT=4002
+      - KMD_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      - JWT_SECRET=algocampus-local-dev-secret-change-in-production
+      - APP_MANIFEST_PATH=/app/artifacts/app_manifest.json
+      - DB_PATH=.data/algocampus.db
+      - BFF_BASE_URL=http://localhost:8000
+    volumes:
+      - backend-data:/app/.data
+      - ./contracts/smart_contracts/artifacts:/app/artifacts:ro
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - algocampus
+
+volumes:
+  algod-data:
+  backend-data:
+
+
+networks:
+  algocampus:
+    driver: bridge

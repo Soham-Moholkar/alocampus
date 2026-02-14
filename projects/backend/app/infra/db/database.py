@@ -74,3 +74,11 @@ async def get_db() -> aiosqlite.Connection:
     if _db is None:
         raise RuntimeError("DB not initialised – call init_db first")
     return _db
+
+
+async def close_db() -> None:
+    """Gracefully close the database connection."""
+    global _db
+    if _db is not None:
+        await _db.close()
+        _db = None

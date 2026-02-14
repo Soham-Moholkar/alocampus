@@ -101,10 +101,10 @@ class AttendanceContract(ARC4Contract):
         self.session_counter = new_id
         sid = op.itob(new_id)
 
-        self.session_course[sid] = course_code.copy()
-        self.session_ts[sid] = session_ts.copy()
-        self.session_open[sid] = open_round.copy()
-        self.session_close[sid] = close_round.copy()
+        self.session_course[sid] = course_code
+        self.session_ts[sid] = session_ts
+        self.session_open[sid] = open_round
+        self.session_close[sid] = close_round
 
         return arc4.UInt64(new_id)
 
@@ -147,9 +147,9 @@ class AttendanceContract(ARC4Contract):
         assert sid in self.session_course, "session not found"
         return arc4.Tuple(
             (
-                self.session_course[sid].copy(),
-                self.session_ts[sid].copy(),
-                self.session_open[sid].copy(),
-                self.session_close[sid].copy(),
+                self.session_course[sid],
+                self.session_ts[sid],
+                self.session_open[sid],
+                self.session_close[sid],
             )
         )
