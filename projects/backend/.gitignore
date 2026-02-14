@@ -2,4 +2,3 @@
 __pycache__/
 *.pyc
 .env
-smart_contracts/artifacts/

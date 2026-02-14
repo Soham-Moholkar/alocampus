@@ -1,337 +1,542 @@
-### Algorand dApp Quick Start Guide (Base Template)
+<p align="center">
+  <img src="https://img.shields.io/badge/Algorand-000000?style=for-the-badge&logo=algorand&logoColor=white" />
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" />
+  <img src="https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black" />
+  <img src="https://img.shields.io/badge/AlgoKit-v2-blueviolet?style=for-the-badge" />
+</p>
 
-This guide helps non‑technical founders and developers quickly prototype and test Web3 ideas on Algorand using this starter. You’ll set up the project, customize the UI via safe AI prompts, mint tokens and NFTs, and interact with smart contracts.
+# AlgoCampus — Blockchain-Powered Campus Platform
 
-- Repo to fork/clone: `https://github.com/marotipatre/Hackseries-2-QuickStart-template` (source)
-- Works with AlgoKit monorepo structure (contracts + React frontend)
-- Includes prebuilt “cards” demonstrating key patterns:
-  - Counter: simple contract interaction
-  - Bank: complex interaction with contract + Indexer
-  - Asset Create: mint fungible tokens (ASAs)
-  - NFT Mint: upload to IPFS and mint ARC NFTs
-  - Payments: send ALGO and ASA (e.g., USDC)
+> A fully local, Algorand-backed academic platform for **voting**, **attendance tracking**, and **verifiable certificate issuance** — with role-based dashboards for Students, Faculty, and Admins.
 
-[Base template repo](https://github.com/marotipatre/Hackseries-2-QuickStart-template)
+Everything runs on **AlgoKit LocalNet**. No data leaves your machine. No Pinata, no IPFS gateways, no external APIs.
 
 ---
 
-## 1) Project Setup
+## Table of Contents
 
-Prerequisites:
-- Docker (running)
-- Node.js 18+ and npm
-- AlgoKit installed (see official docs)
+- [Architecture Overview](#architecture-overview)
+- [Project Structure](#project-structure)
+- [Smart Contracts](#smart-contracts)
+  - [VotingContract](#1-votingcontract)
+  - [AttendanceContract](#2-attendancecontract)
+  - [CertificateRegistryContract](#3-certificateregistrycontract)
+  - [Shared: Role Management](#shared-role-management)
+  - [Atomic Transaction Group](#atomic-transaction-group)
+- [Backend (BFF API)](#backend-bff-api)
+  - [Architecture Layers](#architecture-layers)
+  - [Complete API Reference](#complete-api-reference)
+  - [Authentication Flow](#authentication-flow)
+  - [Database Schema](#database-schema)
+  - [Rate Limiting](#rate-limiting)
+- [Frontend Route Map](#frontend-route-map)
+- [Cohesion Rules](#cohesion-rules)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Quick Start (Windows)](#quick-start-windows)
+  - [Quick Start (Bash / macOS / Linux)](#quick-start-bash--macos--linux)
+- [Environment Variables](#environment-variables)
+- [Typed Client Generation](#typed-client-generation)
+- [Known Issues & Fixes](#known-issues--fixes)
+- [License](#license)
 
-Clone or fork the base template:
+---
 
-```bash
-git clone https://github.com/marotipatre/Hackseries-2-QuickStart-template.git
-cd Hackseries-2-QuickStart-template
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        AlgoCampus Platform                          │
+├─────────────┬───────────────────────────┬───────────────────────────┤
+│  Frontend   │      BFF (FastAPI)        │   Algorand LocalNet       │
+│  React/TS   │                           │                           │
+│             │  ┌─────────┐              │  ┌───────────────────┐    │
+│  /student/* │  │ API     │──── algod ──►│  │ VotingContract    │    │
+│  /faculty/* │  │ Routes  │              │  │ (ARC-4 + boxes)   │    │
+│  /admin/*   │  ├─────────┤              │  ├───────────────────┤    │
+│             │  │UseCases │──── KMD  ───►│  │ AttendanceContract│    │
+│  Typed TS   │  ├─────────┤              │  │ (ARC-4 + boxes)   │    │
+│  Clients    │  │ Infra   │── Indexer ──►│  ├───────────────────┤    │
+│  (ARC-32)   │  │ ┌─────┐│              │  │ CertificateRegistry│   │
+│             │  │ │SQLite││              │  │ (ARC-4 + ASA/NFT) │   │
+│             │  │ └─────┘│              │  └───────────────────┘    │
+└─────────────┴───────────────────────────┴───────────────────────────┘
 ```
 
-Bootstrap the workspace (installs deps, sets up venv, etc.):
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Smart Contracts** | AlgoPy (ARC-4), Boxes, Inner Txns | On-chain state, role enforcement, NFT minting |
+| **BFF API** | FastAPI, SQLite, Algorand SDK | Auth (JWT), caching, tx tracking, metadata serving |
+| **Frontend** | React + Vite + TypeScript | Role-based dashboards, typed contract clients |
+| **LocalNet** | algod + indexer + KMD (Docker) | Full local Algorand network |
 
-```bash
+---
+
+## Project Structure
+
+```
+E:\MLSC\
+├── .algokit.toml                          # AlgoKit workspace root
+├── README.md
+│
+├── projects/
+│   ├── contracts/                         # Algorand smart contracts
+│   │   ├── .algokit.toml                  # Build/deploy/client-gen config
+│   │   ├── .env.localnet                  # LocalNet connection vars
+│   │   ├── pyproject.toml                 # Poetry: algorand-python, puyapy
+│   │   └── smart_contracts/
+│   │       ├── __init__.py
+│   │       ├── __main__.py                # CLI: build | deploy
+│   │       ├── config.py                  # Contract registry
+│   │       ├── voting/
+│   │       │   └── contract.py            # VotingContract
+│   │       ├── attendance/
+│   │       │   └── contract.py            # AttendanceContract
+│   │       ├── certificate/
+│   │       │   └── contract.py            # CertificateRegistryContract
+│   │       └── helpers/
+│   │           ├── build.py               # Compile → TEAL + ARC-32
+│   │           ├── deploy.py              # Deploy → LocalNet + app_manifest.json
+│   │           └── generate_clients.py    # → frontend/src/contracts/*.ts
+│   │
+│   ├── backend/                           # FastAPI BFF
+│   │   ├── .algokit.toml
+│   │   ├── .env.localnet                  # All env vars
+│   │   ├── pyproject.toml                 # Poetry: fastapi, aiosqlite, etc.
+│   │   ├── requirements.txt
+│   │   └── app/
+│   │       ├── __init__.py
+│   │       ├── main.py                    # App factory + lifespan
+│   │       ├── config.py                  # Pydantic Settings
+│   │       ├── auth.py                    # JWT + role dependencies
+│   │       ├── rate_limit.py              # Token-bucket middleware
+│   │       ├── api/                       # Controller layer
+│   │       │   ├── __init__.py            # Router aggregation
+│   │       │   ├── health.py              # GET /health
+│   │       │   ├── auth_routes.py         # /auth/nonce, /auth/verify, /auth/me
+│   │       │   ├── admin.py               # POST /admin/role
+│   │       │   ├── faculty.py             # /faculty/polls, /sessions, /cert/issue
+│   │       │   ├── polls.py               # GET /polls, /polls/{id}
+│   │       │   ├── sessions.py            # GET /attendance/sessions, /{id}
+│   │       │   ├── certs.py               # GET /certs, /certs/verify
+│   │       │   ├── certificate.py         # GET /cert/verify (public alias)
+│   │       │   ├── tx.py                  # /tx/track
+│   │       │   ├── analytics.py           # GET /analytics/summary
+│   │       │   └── metadata.py            # GET /metadata/cert/{hash}.json
+│   │       ├── usecases/                  # Business logic layer
+│   │       │   ├── auth_uc.py
+│   │       │   ├── roles_uc.py
+│   │       │   ├── polls_uc.py
+│   │       │   ├── sessions_uc.py
+│   │       │   ├── certificate_uc.py
+│   │       │   ├── certs_uc.py
+│   │       │   ├── tx_uc.py
+│   │       │   └── analytics_uc.py
+│   │       ├── domain/                    # Domain models (Pydantic)
+│   │       │   └── models.py
+│   │       └── infra/                     # Infrastructure layer
+│   │           ├── db/
+│   │           │   ├── database.py        # SQLite init + schema
+│   │           │   └── models.py          # CRUD query helpers
+│   │           └── algorand/
+│   │               ├── client.py          # algod/indexer/KMD factories
+│   │               ├── chain.py           # On-chain ABI call helpers
+│   │               └── indexer.py         # Analytics + tx lookup
+│   │
+│   └── frontend/
+│       └── src/contracts/                 # Generated typed TS clients
+│           ├── VotingClient.ts
+│           ├── AttendanceClient.ts
+│           └── CertificateRegistryClient.ts
+```
+
+---
+
+## Smart Contracts
+
+All three contracts follow the same patterns:
+- **ARC-4** (`ARC4Contract` + `@arc4.abimethod`)
+- **Box-backed storage** (no global state bloat)
+- **Round-window time constraints** (start/end rounds)
+- **On-chain role enforcement** (admin + faculty allowlists in boxes)
+
+### 1. VotingContract
+
+On-chain polling with one-address-one-vote enforcement.
+
+| Method | Parameters | Returns | Access |
+|--------|-----------|---------|--------|
+| `create_application()` | — | void | create only |
+| `set_admin(addr, enabled)` | Address, Bool | void | creator only |
+| `set_faculty(addr, enabled)` | Address, Bool | void | admin |
+| `create_poll(question, options, start_round, end_round)` | String, String[], UInt64, UInt64 | UInt64 (poll_id) | admin/faculty |
+| `cast_vote(poll_id, option_index)` | UInt64, UInt64 | Bool | anyone (round window) |
+| `cast_vote_with_deposit(pay, poll_id, option_index)` | PaymentTxn, UInt64, UInt64 | Bool | anyone (atomic group) |
+| `get_poll(poll_id)` | UInt64 | (question, num_opts, start, end) | readonly |
+| `get_result(poll_id, option_index)` | UInt64, UInt64 | UInt64 (count) | readonly |
+
+**Box maps:** `poll_questions`, `poll_num_options`, `poll_start_round`, `poll_end_round`, `poll_options` (poll+idx), `vote_counts` (poll+idx), `voter_flags` (poll+voter)
+
+### 2. AttendanceContract
+
+On-chain session attendance with per-address check-in.
+
+| Method | Parameters | Returns | Access |
+|--------|-----------|---------|--------|
+| `create_application()` | — | void | create only |
+| `set_admin(addr, enabled)` | Address, Bool | void | creator only |
+| `set_faculty(addr, enabled)` | Address, Bool | void | admin |
+| `create_session(course_code, session_ts, open_round, close_round)` | String, UInt64, UInt64, UInt64 | UInt64 (session_id) | admin/faculty |
+| `check_in(session_id)` | UInt64 | Bool | anyone (round window) |
+| `is_present(session_id, addr)` | UInt64, Address | Bool | readonly |
+| `get_session(session_id)` | UInt64 | (course, ts, open, close) | readonly |
+
+**Box maps:** `session_course`, `session_ts`, `session_open`, `session_close`, `roster` (session+addr)
+
+### 3. CertificateRegistryContract
+
+Verifiable certificate registry with ASA/NFT minting support.
+
+| Method | Parameters | Returns | Access |
+|--------|-----------|---------|--------|
+| `create_application()` | — | void | create only |
+| `set_admin(addr, enabled)` | Address, Bool | void | creator only |
+| `set_faculty(addr, enabled)` | Address, Bool | void | admin |
+| `register_cert(cert_hash, recipient, asset_id, issued_ts)` | DynamicBytes, Address, UInt64, UInt64 | Bool | admin/faculty |
+| `reissue_cert(cert_hash, recipient, asset_id, issued_ts)` | DynamicBytes, Address, UInt64, UInt64 | Bool | admin only |
+| `mint_and_register(cert_hash, recipient, metadata_url, issued_ts)` | DynamicBytes, Address, String, UInt64 | UInt64 (asset_id) | admin/faculty |
+| `verify_cert(cert_hash)` | DynamicBytes | (recipient, asset_id, issued_ts) | readonly |
+
+**Box maps:** `cert_recipient`, `cert_asset`, `cert_ts`
+
+**Inner transaction:** `mint_and_register` creates an ARC-3 NFT (total=1, decimals=0, unit=`CERT`) via `itxn.AssetConfig`.
+
+### Shared: Role Management
+
+All three contracts share an identical interface:
+
+```
+set_admin(address, bool)   → only the original creator (deployer)
+set_faculty(address, bool) → any admin
+```
+
+Stored in box maps with prefixes `adm` and `fac`. Checked via subroutines `_is_admin()` and `_is_admin_or_faculty()`.
+
+When the BFF's `/admin/role` endpoint is called, it pushes the role to **all three contracts** simultaneously.
+
+### Atomic Transaction Group
+
+**`cast_vote_with_deposit`** on VotingContract demonstrates a real atomic group:
+- Transaction 0: `PaymentTransaction` (≥ 1000 µAlgo to the app address)
+- Transaction 1: `ApplicationCallTransaction` (the vote app-call)
+
+Both succeed or both fail — enforced by `gtxn.PaymentTransaction` reference in the ABI method.
+
+---
+
+## Backend (BFF API)
+
+A FastAPI Backend-for-Frontend that bridges the React frontend to Algorand LocalNet.
+
+### Architecture Layers
+
+```
+app/api/           → Controller layer (FastAPI routes)
+app/usecases/      → Business logic (pure orchestration)
+app/domain/        → Pydantic models (request/response)
+app/infra/db/      → SQLite (aiosqlite) persistence
+app/infra/algorand/→ Algorand SDK (algod, indexer, KMD, ATC calls)
+```
+
+### Complete API Reference
+
+#### Public Endpoints (No Auth)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Liveness check → `{"status": "ok"}` |
+| `POST` | `/auth/nonce` | Request challenge nonce for wallet address |
+| `POST` | `/auth/verify` | Verify Ed25519 signature → issue JWT |
+| `GET` | `/polls` | List all polls (paginated: `?limit=&offset=`) |
+| `GET` | `/polls/{poll_id}` | Get single poll details |
+| `GET` | `/attendance/sessions` | List all sessions (paginated) |
+| `GET` | `/attendance/sessions/{session_id}` | Get single session details |
+| `GET` | `/certs/verify?cert_hash=<hex>` | On-chain certificate verification |
+| `GET` | `/cert/verify?cert_hash=<hex>` | Alias for above |
+| `POST` | `/tx/track` | Record tx for background confirmation polling |
+| `GET` | `/tx/track/{tx_id}` | Get tx confirmation status |
+| `GET` | `/analytics/summary` | Indexer-backed aggregate counts |
+| `GET` | `/metadata/cert/{hash}.json` | Serve ARC-3 metadata JSON locally |
+
+#### Authenticated Endpoints (JWT Required)
+
+| Method | Path | Role | Description |
+|--------|------|------|-------------|
+| `GET` | `/auth/me` | any | Return address + role of current user |
+| `GET` | `/certs` | any (filtered) | Students see own certs; faculty/admin see all |
+
+#### Faculty/Admin Write Endpoints
+
+| Method | Path | Role | Description |
+|--------|------|------|-------------|
+| `POST` | `/faculty/polls` | faculty/admin | Create poll on-chain + BFF cache |
+| `POST` | `/faculty/sessions` | faculty/admin | Create session on-chain + BFF cache |
+| `POST` | `/faculty/cert/issue` | faculty/admin | Mint ASA/NFT + register cert on-chain |
+
+#### Admin-Only Endpoints
+
+| Method | Path | Role | Description |
+|--------|------|------|-------------|
+| `POST` | `/admin/role` | admin | Set role (SQLite + on-chain push to all contracts) |
+
+### Authentication Flow
+
+```
+1. Frontend → POST /auth/nonce { address }
+   ← { nonce: "random-hex" }
+
+2. Wallet signs message: "AlgoCampus auth nonce: <nonce>"
+
+3. Frontend → POST /auth/verify { address, nonce, signature }
+   ← { jwt: "eyJ..." }    (HS256, 60 min expiry, contains sub + role)
+
+4. All subsequent requests include:
+   Authorization: Bearer <jwt>
+```
+
+The JWT payload contains `sub` (Algorand address), `role` (admin/faculty/student), `iat`, `exp`.
+
+### Database Schema
+
+Six SQLite tables in `.data/algocampus.db`:
+
+| Table | Primary Key | Purpose |
+|-------|------------|---------|
+| `roles` | `address` | Role cache (admin/faculty/student) |
+| `nonces` | `address` | One-time auth challenge nonces |
+| `tx_tracking` | `tx_id` | Background transaction confirmation polling |
+| `cert_metadata` | `cert_hash` | ARC-3 metadata JSON store (local, no IPFS) |
+| `polls` | `poll_id` | BFF cache of on-chain polls |
+| `sessions` | `session_id` | BFF cache of on-chain attendance sessions |
+
+### Rate Limiting
+
+In-memory token-bucket middleware on `/auth/*` and `/admin/*` paths:
+- **Capacity:** 20 tokens per IP
+- **Refill:** 2 tokens/second
+- **Exceeded:** HTTP 429
+
+---
+
+## Frontend Route Map
+
+The frontend uses role-based routing: `GET /auth/me` returns the role, which determines the landing dashboard.
+
+| Role | Redirect | Dashboard |
+|------|----------|-----------|
+| Student | `/student/dashboard` | Voting, Attendance, Certificates, Feedback, Profile |
+| Faculty | `/faculty/dashboard` | Create polls/sessions, Issue certs, Analytics, Profile |
+| Admin | `/admin/dashboard` | Role management, System overview, Analytics |
+
+### Route Table
+
+**Shared (all roles):**
+`/connect` · `/verify/certificate` · `/activity` · `/settings`
+
+**Student routes:**
+`/student/dashboard` · `/student/voting` · `/student/attendance` · `/student/certificates` · `/student/feedback` · `/student/profile`
+
+**Faculty routes:**
+`/faculty/dashboard` · `/faculty/voting` · `/faculty/attendance` · `/faculty/certificates` · `/faculty/analytics` · `/faculty/profile`
+
+**Admin routes:**
+`/admin/dashboard` · `/admin/roles` · `/admin/system` · `/admin/analytics`
+
+---
+
+## Cohesion Rules
+
+These are the non-negotiable architectural constraints:
+
+| # | Rule | Enforcement |
+|---|------|-------------|
+| 1 | **Certificates: BFF mints** | Frontend calls `POST /faculty/cert/issue`. BFF mints ASA via KMD dev account + registers on-chain. Frontend never mints directly. |
+| 2 | **Read strategy: Indexer/BFF-cache** | List views (`/polls`, `/attendance/sessions`, `/certs`) served from BFF SQLite. Contract getters used only for verification (`verify_cert`, `is_present`). |
+| 3 | **Roles: on-chain enforced** | BFF stores SQLite cache AND pushes `set_admin`/`set_faculty` to all 3 contracts. Contracts enforce access in every write method. |
+| 4 | **Typed clients** | After contract changes, run `generate_clients.py`. Frontend imports only from `projects/frontend/src/contracts/**`. |
+| 5 | **Local-only** | No Pinata, IPFS, or external APIs. Certificate metadata served from `GET /metadata/cert/{hash}.json`. |
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| [AlgoKit CLI](https://github.com/algorandfoundation/algokit-cli) | ≥ 2.0 | Workspace management, LocalNet, compilation |
+| [Python](https://python.org) | ≥ 3.12 | Contracts + backend |
+| [Poetry](https://python-poetry.org) | ≥ 1.7 | Dependency management |
+| [Docker Desktop](https://docker.com) | Latest | LocalNet (algod + indexer + KMD) |
+| [Node.js](https://nodejs.org) | ≥ 18 | Frontend + client generation |
+
+### Quick Start (Windows)
+
+```powershell
+# 1) Start LocalNet (Docker containers)
+algokit localnet start
+
+# 2) Bootstrap all sub-projects (installs all dependencies)
+cd E:\MLSC
 algokit project bootstrap all
+
+# 3) Build smart contracts (compile AlgoPy → TEAL + ARC-32)
+cd projects\contracts
+poetry install
+poetry run python -m smart_contracts build
+
+# 4) Deploy all 3 contracts to LocalNet
+poetry run python -m smart_contracts deploy
+#    → Creates: smart_contracts/artifacts/app_manifest.json
+
+# 5) Generate TypeScript typed clients for the frontend
+poetry run python -m smart_contracts.helpers.generate_clients
+#    → Creates: ../frontend/src/contracts/{Voting,Attendance,CertificateRegistry}Client.ts
+
+# 6) Start the FastAPI BFF
+cd ..\backend
+copy .env.localnet .env
+poetry install
+poetry run uvicorn app.main:app --reload --port 8000
+#    → Swagger UI: http://localhost:8000/docs
+
+# 7) Start the frontend (separate terminal)
+cd ..\frontend
+npm install
+npm run dev
+#    → http://localhost:5173
 ```
 
-Build all projects:
+### Quick Start (Bash / macOS / Linux)
 
 ```bash
-algokit project run build
-```
+# 1) Start LocalNet
+algokit localnet start
 
-Run the frontend:
+# 2) Bootstrap
+cd /path/to/MLSC
+algokit project bootstrap all
 
-```bash
-cd projects/frontend
+# 3) Build contracts
+cd projects/contracts
+poetry install
+poetry run python -m smart_contracts build
+
+# 4) Deploy
+poetry run python -m smart_contracts deploy
+
+# 5) Generate clients
+poetry run python -m smart_contracts.helpers.generate_clients
+
+# 6) Start BFF
+cd ../backend
+cp .env.localnet .env
+poetry install
+poetry run uvicorn app.main:app --reload --port 8000
+
+# 7) Start frontend
+cd ../frontend
 npm install
 npm run dev
 ```
 
-Optional: alternative starter to compare or borrow patterns from:
+---
 
+## Environment Variables
+
+All backend config lives in `projects/backend/.env.localnet`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALGOD_SERVER` | `http://localhost` | Algorand node server |
+| `ALGOD_PORT` | `4001` | Algorand node port |
+| `ALGOD_TOKEN` | `a×64` | Algorand node auth token |
+| `INDEXER_SERVER` | `http://localhost` | Indexer server |
+| `INDEXER_PORT` | `8980` | Indexer port |
+| `INDEXER_TOKEN` | `a×64` | Indexer auth token |
+| `KMD_SERVER` | `http://localhost` | Key Management Daemon |
+| `KMD_PORT` | `4002` | KMD port |
+| `KMD_TOKEN` | `a×64` | KMD auth token |
+| `JWT_SECRET` | `algocampus-local-dev-secret...` | HMAC signing key |
+| `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
+| `JWT_EXPIRE_MINUTES` | `60` | Token expiry |
+| `APP_MANIFEST_PATH` | `../contracts/.../app_manifest.json` | Deployed contract IDs |
+| `DB_PATH` | `.data/algocampus.db` | SQLite database file |
+| `BFF_BASE_URL` | `http://localhost:8000` | BFF public URL (for metadata URLs) |
+
+---
+
+## Typed Client Generation
+
+Contracts produce ARC-32 app specs during build. The generation pipeline:
+
+```
+AlgoPy source  →  algokit compile python  →  TEAL + ARC-32 JSON
+                                                      │
+                                            algokit generate client
+                                                      │
+                                                      ▼
+                                    frontend/src/contracts/*Client.ts
+```
+
+**Config** (in `projects/contracts/.algokit.toml`):
+
+| Contract | Output File |
+|----------|-------------|
+| VotingContract | `VotingClient.ts` |
+| AttendanceContract | `AttendanceClient.ts` |
+| CertificateRegistryContract | `CertificateRegistryClient.ts` |
+
+**Important:** After any contract changes, always re-run:
 ```bash
-git clone https://github.com/Ganainmtech/Algorand-dApp-Quick-Start-Template-TypeScript.git
-```
-
-References:
-- Algorand Developer Portal: `https://dev.algorand.co/`
-- AlgoKit Workshops: `https://algorand.co/algokit-workshops`
-- Algodevs YouTube: `https://www.youtube.com/@algodevs`
-
----
-
-## 2) Required environment variables (Frontend)
-
-Create `projects/frontend/.env` with the following values for TestNet (adjust as needed):
-
-```bash
-# Network (Algod)
-VITE_ALGOD_SERVER=https://testnet-api.algonode.cloud
-VITE_ALGOD_PORT=
-VITE_ALGOD_TOKEN=
-VITE_ALGOD_NETWORK=testnet
-
-# Indexer (for Bank/indexed reads)
-VITE_INDEXER_SERVER=https://testnet-idx.algonode.cloud
-VITE_INDEXER_PORT=
-VITE_INDEXER_TOKEN=
-
-# Optional: KMD (if using a local KMD wallet)
-VITE_KMD_SERVER=http://localhost
-VITE_KMD_PORT=4002
-VITE_KMD_TOKEN=a-super-secret-token
-VITE_KMD_WALLET=unencrypted-default-wallet
-VITE_KMD_PASSWORD=some-password
-
-# Pinata (NFT media + metadata to IPFS)
-# Generate a JWT in Pinata and paste below
-VITE_PINATA_JWT=eyJhbGciOi...  # JWT from Pinata
-# Optional: custom gateway
-VITE_PINATA_GATEWAY=https://gateway.pinata.cloud/ipfs
-```
-
-Notes:
-- Algod/Indexer config is read by `src/utils/network/getAlgoClientConfigs.ts`:
-  - `VITE_ALGOD_SERVER`, `VITE_ALGOD_PORT`, `VITE_ALGOD_TOKEN`, `VITE_ALGOD_NETWORK`
-  - `VITE_INDEXER_SERVER`, `VITE_INDEXER_PORT`, `VITE_INDEXER_TOKEN`
-- Pinata integration expects `VITE_PINATA_JWT` and optional `VITE_PINATA_GATEWAY` for NFT uploads (see `src/utils/pinata.ts`).
-- Restart the dev server after editing `.env`.
-
-Pinata API keys/JWT: create via Pinata dashboard `https://app.pinata.cloud/developers/api-keys` and use the generated JWT.
-
----
-
-## 3) Project map (what to tweak)
-
-Frontend location: `projects/frontend`
-
-Key files:
-- `src/Home.tsx` — Landing page
-- `src/components/Transact.tsx` — Payments (ALGO, template for ASA)
-- `src/components/Bank.tsx` — Contract + Indexer demo (deploy, deposit, withdraw, statements, depositors)
-- `src/components/CreateASA.tsx` — Create fungible tokens (ASA)
-- `src/components/MintNFT.tsx` — Mint NFTs with IPFS media/metadata
-- `src/components/AppCalls.tsx` — Example app call wiring to a contract
-- `src/utils/pinata.ts` — Pinata IPFS utilities (file/JSON pin)
-- `src/utils/network/getAlgoClientConfigs.ts` — Network configs from Vite env
-
-Contracts (generated artifacts, clients):
-- `projects/contracts/smart_contracts/**` and `projects/frontend/src/contracts/**`
-
----
-
-## 4) Use AI to redesign UI safely (keep logic intact)
-
-How to work:
-1) Open the target file and copy its full contents.
-2) Paste into your AI tool (ChatGPT/Claude/Gemini).
-3) Use the corresponding prompt below to redesign using TailwindCSS.
-4) Replace only JSX/markup/styles. Do NOT change logic, imports, props, state, handlers, or function calls.
-
-### 4.1 Home (Landing Page)
-
-File: `projects/frontend/src/Home.tsx`
-
-Prompt:
-```
-I'm building an Algorand dApp and want to improve the design of my landing page in projects/frontend/src/Home.tsx. Please redesign the layout using modern web design principles with TailwindCSS. Include:
-- A visually striking hero section with a short headline and subheading
-- A primary call-to-action button that navigates to key features
-- A simple feature grid that highlights the cards: Counter, Bank, Payments, Create Token (ASA), Mint NFT
-- Balanced spacing, responsive design (mobile/desktop), and a Web3/tech-style color theme
-Keep ALL existing logic for wallet connection, navigation, event handlers, and button states EXACTLY as they are — do not change any logic or data flow. Only change the JSX structure and Tailwind classes.
-```
-
-### 4.2 Payments (Transact)
-
-File: `projects/frontend/src/components/Transact.tsx`
-
-Prompt:
-```
-I'm building a payments dApp on Algorand that allows users to send ALGO or USDC to others. I’ve pasted the existing projects/frontend/src/components/Transact.tsx which already contains transaction logic. Please redesign this component using TailwindCSS to look like a clean, modern payment interface:
-- Clear inputs for recipient address and read-only display for amount (1 ALGO in this example)
-- A prominent Send button
-- Helpful labels, subtle validation states, and a simple success message area
-- Responsive, minimal Web3 design aesthetic
-Keep ALL wallet and transaction logic EXACTLY as it is — do not change any function names, props, state variables, or event handlers.
-```
-
-Optional extension prompt (ASA like USDC):
-```
-Extend the UI design to optionally switch between sending ALGO or an ASA (e.g., USDC) without changing existing ALGO logic. Only provide additional JSX blocks and Tailwind classes; do not modify or remove the current payment logic. You can add a new tab-like UI and mock disabled form fields for ASA to show the final look-and-feel.
-```
-
-### 4.3 Bank (Complex contract + Indexer)
-
-File: `projects/frontend/src/components/Bank.tsx`
-
-Prompt:
-```
-This is a "Bank" demo that shows a more complex Algorand contract integration with Indexer queries, boxes, and inner transactions. I’ve pasted projects/frontend/src/components/Bank.tsx. Please enhance the UI with TailwindCSS:
-- Clear App ID input and App Address display
-- Two panels: Deposit (memo + amount) and Withdraw (amount)
-- A status area for loading/spinners and action feedback
-- Paginated, scrollable Statements and Depositors lists, with clear labels and link to explorer
-- Keep it responsive and professional with a dashboard feel
-Do NOT change any logic, props, function names, or data fetching. Only adjust JSX structure and Tailwind classes.
-```
-
-### 4.4 Create ASA (Fungible tokens)
-
-File: `projects/frontend/src/components/CreateASA.tsx`
-
-Prompt:
-```
-I'm building a loyalty/stablecoin-like token on Algorand. I’ve included projects/frontend/src/components/CreateASA.tsx with working ASA creation logic. Please redesign the component using TailwindCSS to present a professional token creation form:
-- Inputs: Token Name, Unit/Symbol, Decimals, Total Supply (base units)
-- A clear, primary "Create Token" button with loading/disabled states
-- A compact help text about each field
-- Minimal dashboard style consistent with the rest of the app
-Keep ALL minting and wallet logic EXACTLY as-is — change ONLY layout and Tailwind classes.
-```
-
-### 4.5 Mint NFT (IPFS + ARC NFT)
-
-File: `projects/frontend/src/components/MintNFT.tsx`
-
-Prompt:
-```
-I'm building an Algorand-based NFT dApp that allows users to mint digital collectibles. I’ve pasted projects/frontend/src/components/MintNFT.tsx which already includes upload to IPFS and NFT mint logic. Please redesign using TailwindCSS:
-- Upload field for image/file with preview
-- Inputs for Name and Description
-- Display upload and mint progress (spinners, progress bars, small status messages)
-- A primary "Mint NFT" button with clear disabled/loading states
-- A link to view the NFT/metadata via the configured IPFS gateway
-Keep ALL wallet, IPFS (Pinata), and minting logic EXACTLY as-is — modify only JSX and Tailwind classes.
+poetry run python -m smart_contracts build
+poetry run python -m smart_contracts deploy
+poetry run python -m smart_contracts.helpers.generate_clients
 ```
 
 ---
 
-## 5) NFT Environment (Pinata + IPFS)
+## Known Issues & Fixes
 
-- Create Pinata API Key/JWT: `https://app.pinata.cloud/developers/api-keys`
-- Put JWT in `projects/frontend/.env` as `VITE_PINATA_JWT`
-- Optional: set `VITE_PINATA_GATEWAY` to your preferred gateway
-- Restart dev server after changing `.env`:
-
-```bash
-npm run dev
-```
-
-NFT flow uses:
-- `src/utils/pinata.ts` (expects `VITE_PINATA_JWT`, optional `VITE_PINATA_GATEWAY`)
-- `pinFileToIPFS` and `pinJSONToIPFS` endpoints
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| **AlgoPy API differences** | `algorand-python` / `puyapy` version mismatches | Pin versions in `pyproject.toml`; check compiler error messages for exact required syntax |
+| **Box MBR (minimum balance)** | Each box creation requires the app account to be funded | Send Algos to app address before creating polls/sessions/certs (dev account has funds) |
+| **`nacl` import error** | `PyNaCl` not installed | Comes with `python-jose[cryptography]`; fallback: `pip install pynacl` |
+| **Indexer lag** | Indexer takes 1-2 rounds to index | `/tx/track` polls with 2s intervals, up to 60s total |
+| **NFT stays with dev account** | Recipient opt-in not implemented for LocalNet demo | NFT held by deployer; add opt-in + transfer for production |
+| **App manifest not found** | BFF started before contracts deployed | Run deploy step first, then start BFF |
+| **`AlgoClientConfig` deprecation** | algokit-utils v3 may change API | Currently pinned to `>=2.2.0,<3` |
 
 ---
 
-## 6) Smart Contract interaction basics
+## Tech Stack
 
-- Example TS clients are generated into `projects/frontend/src/contracts`
-- Frontend demo wiring in `src/components/AppCalls.tsx`
-- Use Bank/Counter cards to explore app call patterns, boxes, and Indexer usage
-
-Learn more:
-- Algorand Dev Portal: `https://dev.algorand.co/`
-- AlgoKit Workshops: `https://algorand.co/algokit-workshops`
-- Algodevs YouTube: `https://www.youtube.com/@algodevs`
-
----
-
-## 7) Card overview and tweak ideas
-
-- Counter
-  - Purpose: Simple app call demonstration
-  - Tweak: Typography, spacing, and success toast placement
-  - AI tip: “Add a hero-like header; keep all state/handlers/contract calls unchanged.”
-
-- Bank
-  - Purpose: Complex contract with deposit/withdraw and Indexer reads
-  - Tweak: Two-column layout, data tables with pagination, explorer links
-  - AI tip: “Make statements/depositors scrollable; maintain all function names and handlers.”
-
-- Payments (Transact)
-  - Purpose: Send ALGO (and optionally mock ASA UI)
-  - Tweak: Input clarity, action emphasis, subtle validation messaging
-  - AI tip: “Keep existing ALGO logic identical; ASA tab as UI-only demo.”
-
-- Create ASA
-  - Purpose: Mint fungible token
-  - Tweak: Professional form design, helper text for decimals/total
-  - AI tip: “Do not change the `algorand.send.assetCreate` call; style form and loading states.”
-
-- Mint NFT
-  - Purpose: Upload media/metadata to IPFS, mint an ARC NFT
-  - Tweak: File upload preview, progress messages, gateway links
-  - AI tip: “Keep Pinata calls and NFT mint logic intact; enhance UI and progress indicators.”
+| Component | Technology |
+|-----------|-----------|
+| Smart Contracts | AlgoPy (Algorand Python), ARC-4, Boxes, Inner Transactions |
+| Compilation | PuyaPy → TEAL + ARC-32 JSON |
+| Backend API | FastAPI 0.110+, Uvicorn, Pydantic v2 |
+| Database | SQLite via aiosqlite |
+| Auth | Ed25519 wallet signatures → JWT (HS256) |
+| Algorand SDK | py-algorand-sdk 2.6+, Atomic Transaction Composer |
+| Frontend | React + Vite + TypeScript (planned) |
+| Infrastructure | AlgoKit LocalNet (Docker: algod + indexer + KMD) |
+| Client Gen | algokit-client-generator → TypeScript |
 
 ---
 
-## 8) Troubleshooting
+## License
 
-- “Missing VITE_ALGOD_SERVER”
-  - Ensure `.env` exists in `projects/frontend` and values are set
-  - Restart `npm run dev`
-
-- “Missing VITE_PINATA_JWT” or IPFS upload fails
-  - Generate JWT in Pinata dashboard and add to `.env`
-  - Confirm gateway works or remove custom gateway (defaults to `https://ipfs.io/ipfs`)
-
-- Indexer queries return empty
-  - Verify `VITE_INDEXER_SERVER` is a TestNet Indexer and `VITE_ALGOD_NETWORK=testnet`
-  - Confirm correct App ID in Bank card
-
-- Transactions fail
-  - Ensure wallet is connected and funded
-  - For Bank, input a valid App ID or deploy via the card
-
----
-
-## 9) CI/CD (Optional)
-
-- Integrate with GitHub Actions for lint/type/test and deployments.
-- Deploy smart contracts via `algokit deploy`.
-- Deploy frontend to Vercel/Netlify; add these `.env` variables to hosting settings.
-
----
-
-## 10) Copy‑ready AI Prompt Snippets
-
-Use these verbatim as you work card‑by‑card:
-
-- Home:
-```
-Redesign projects/frontend/src/Home.tsx using TailwindCSS for a modern Web3 landing page with a strong hero, concise subtitle, and a grid of feature cards (Counter, Bank, Payments, Create Token, Mint NFT). Keep all wallet/navigation logic, props, and handlers EXACTLY as-is. Modify only JSX and Tailwind classes.
-```
-
-- Transact:
-```
-Redesign projects/frontend/src/components/Transact.tsx into a clean payments UI (recipient input, 1 ALGO send button, success message area). Keep ALL existing logic and handlers unchanged. Modify only JSX/Tailwind. Optionally add an ASA tab UI mock without changing logic.
-```
-
-- Bank:
-```
-Enhance projects/frontend/src/components/Bank.tsx with a dashboard feel: App ID input, deploy section, deposit/withdraw cards, scrollable statements and depositors lists with explorer links. Maintain ALL logic and calls as-is; only update layout and Tailwind classes.
-```
-
-- Create ASA:
-```
-Redesign projects/frontend/src/components/CreateASA.tsx to a professional token creation form with inputs (Name, Unit, Decimals, Total), helper text, and a prominent Create button with loading state. Keep all ASA creation logic intact; change only JSX/Tailwind.
-```
-
-- Mint NFT:
-```
-Redesign projects/frontend/src/components/MintNFT.tsx for a sleek NFT minter: file upload with preview, name/description fields, visible Mint button, and progress indicators. Keep Pinata, IPFS, and mint logic untouched; only adjust JSX/Tailwind.
-```
-
----
-
-Links cited:
-- Base template repo: [marotipatre/Hackseries-2-QuickStart-template](https://github.com/marotipatre/Hackseries-2-QuickStart-template)
-- Algorand Developer Portal: `https://dev.algorand.co/`
-- AlgoKit Workshops: `https://algorand.co/algokit-workshops`
-- Algodevs YouTube: `https://www.youtube.com/@algodevs`
-- Pinata API Keys: `https://app.pinata.cloud/developers/api-keys`
-
-
+This project was built for the MLSC hackathon. See individual dependency licenses for third-party software.
