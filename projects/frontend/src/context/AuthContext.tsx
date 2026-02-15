@@ -14,7 +14,7 @@ import { useSnackbar } from 'notistack'
 
 import { ApiError, apiRequest, configureApiAuth } from '../lib/api'
 import { endpoints } from '../lib/endpoints'
-import { clearPreviewSession, clearSession, loadSession, saveSession } from '../lib/storage'
+import { clearDemoAuthToken, clearPreviewSession, clearSession, loadSession, saveSession } from '../lib/storage'
 import { toBase64 } from '../lib/utils'
 import type { MeResponse, NonceResponse, Role, VerifyResponse } from '../types/api'
 
@@ -59,6 +59,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = useCallback(
     async (reason?: string, redirectToConnect = true): Promise<void> => {
       clearSession()
+      clearDemoAuthToken()
       setJwt(null)
       setRole(null)
       setAddress(null)

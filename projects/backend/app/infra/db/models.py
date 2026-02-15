@@ -157,6 +157,28 @@ async def get_session(session_id: int) -> Optional[dict[str, Any]]:
     return await fetch_one("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
 
 
+async def update_session(
+    session_id: int,
+    course_code: str | None = None,
+    session_ts: int | None = None,
+    open_round: int | None = None,
+    close_round: int | None = None,
+) -> None:
+    current = await get_session(session_id)
+    if not current:
+        return
+    await execute(
+        "UPDATE sessions SET course_code = ?, session_ts = ?, open_round = ?, close_round = ? WHERE session_id = ?",
+        (
+            course_code if course_code is not None else current.get("course_code"),
+            session_ts if session_ts is not None else current.get("session_ts"),
+            open_round if open_round is not None else current.get("open_round"),
+            close_round if close_round is not None else current.get("close_round"),
+            session_id,
+        ),
+    )
+
+
 # Activity events
 async def add_activity_event(
     kind: str,
@@ -593,4 +615,65 @@ async def update_attendance_record_status(record_id: str, status: str) -> None:
     await execute(
         "UPDATE attendance_records SET status = ?, attended_at = ? WHERE id = ?",
         (status, time.time(), record_id),
+    )
+
+
+# Demo auth users
+async def upsert_demo_user(
+    user_id: str,
+    role: str,
+    username: str,
+    password_hash: str,
+    display_name: str,
+    identifier: str,
+    is_active: bool = True,
+) -> None:
+    ts = time.time()
+    await execute(
+        "INSERT INTO demo_users (id, role, username, password_hash, display_name, identifier, is_active, created, updated) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "role=excluded.role, username=excluded.username, password_hash=excluded.password_hash, display_name=excluded.display_name, "
+        "identifier=excluded.identifier, is_active=excluded.is_active, updated=excluded.updated",
+        (
+            user_id,
+            role,
+            username,
+            password_hash,
+            display_name,
+            identifier,
+            int(is_active),
+            ts,
+            ts,
+        ),
+    )
+
+
+async def get_demo_user(role: str, username_or_identifier: str) -> Optional[dict[str, Any]]:
+    return await fetch_one(
+        "SELECT id, role, username, password_hash, display_name, identifier, is_active "
+        "FROM demo_users WHERE role = ? AND (username = ? OR identifier = ?)",
+        (role, username_or_identifier, username_or_identifier),
+    )
+
+
+async def get_demo_user_by_id(user_id: str) -> Optional[dict[str, Any]]:
+    return await fetch_one(
+        "SELECT id, role, username, password_hash, display_name, identifier, is_active "
+        "FROM demo_users WHERE id = ?",
+        (user_id,),
+    )
+
+
+async def list_demo_users(role: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    if role:
+        return await fetch_all(
+            "SELECT id, role, username, display_name, identifier, is_active, created, updated "
+            "FROM demo_users WHERE role = ? ORDER BY username ASC LIMIT ?",
+            (role, limit),
+        )
+    return await fetch_all(
+        "SELECT id, role, username, display_name, identifier, is_active, created, updated "
+        "FROM demo_users ORDER BY role ASC, username ASC LIMIT ?",
+        (limit,),
     )

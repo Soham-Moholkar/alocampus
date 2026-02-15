@@ -12,6 +12,7 @@ from app.api.auth_routes import router as auth_router
 from app.api.certificate import router as cert_router
 from app.api.certs import router as certs_router
 from app.api.coordination import router as coordination_router
+from app.api.demo_auth import router as demo_auth_router
 from app.api.faculty import router as faculty_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
@@ -29,6 +30,7 @@ router = APIRouter()
 router.include_router(health_router, tags=["health"])
 router.include_router(system_router, prefix="/system", tags=["system"])
 router.include_router(auth_router, prefix="/auth", tags=["auth"])
+router.include_router(demo_auth_router, prefix="/demo-auth", tags=["demo-auth"])
 router.include_router(me_router, tags=["auth"])
 router.include_router(metadata_router, prefix="/metadata", tags=["metadata"])
 router.include_router(profile_router, prefix="/profile", tags=["profile"])

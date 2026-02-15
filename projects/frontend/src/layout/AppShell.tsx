@@ -14,7 +14,7 @@ import { computeRoundStatus } from '../lib/abi'
 import { apiRequest, withQuery } from '../lib/api'
 import { demoProfiles, isDemoPoll } from '../lib/demoData'
 import { endpoints } from '../lib/endpoints'
-import { isTourCompleted, loadRoleEntryProfile, resetTourCompletion } from '../lib/storage'
+import { clearDemoAuthToken, isTourCompleted, loadRoleEntryProfile, resetTourCompletion } from '../lib/storage'
 import { formatRelative, shortenAddress } from '../lib/utils'
 import { roleNav } from './nav'
 import type {
@@ -300,12 +300,12 @@ export const AppShell = () => {
   }
 
   const handleLogout = async (): Promise<void> => {
+    preview.exitPreview()
+    clearDemoAuthToken()
     if (isAuthenticated) {
       await logout(undefined, true)
       return
     }
-
-    preview.exitPreview()
     navigate('/connect', { replace: true })
   }
 

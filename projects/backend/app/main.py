@@ -12,12 +12,14 @@ from app.config import get_settings
 from app.rate_limit import RateLimitMiddleware
 from app.infra.db.database import close_db, init_db
 from app.api import router as api_router
+from app.seed.demo_users import seed_demo_users
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup / shutdown hooks."""
     await init_db()
+    await seed_demo_users()
     try:
         yield  # app runs here
     finally:

@@ -9,11 +9,11 @@ export const PublicLayout = () => (
         <img src={campusIcon} alt="AlgoCampus" />
         <div>
           <h1>AlgoCampus</h1>
-          <p>Certificate verification and public proof view</p>
+          <p>Local-first blockchain campus platform</p>
         </div>
       </div>
       <Link className="btn btn-primary" to="/connect">
-        Connect Wallet
+        Enter Platform
       </Link>
     </header>
     <main className="public-content">

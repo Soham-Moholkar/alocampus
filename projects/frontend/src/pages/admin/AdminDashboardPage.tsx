@@ -23,6 +23,7 @@ import type {
   AnnouncementItem,
   AnnouncementListResponse,
   CoordinationTaskListResponse,
+  DemoUserProfile,
   SystemHealthResponse,
 } from '../../types/api'
 
@@ -48,6 +49,14 @@ export const AdminDashboardPage = () => {
         ? apiRequest<CoordinationTaskListResponse>(endpoints.coordinationTasks)
         : Promise.resolve({ tasks: [], count: 0 }),
     [isAuthenticated],
+  )
+  const demoStudents = useAsyncData(
+    () => apiRequest<DemoUserProfile[]>(withQuery(endpoints.demoAuthUsers, { role: 'student' }), { auth: false }),
+    [],
+  )
+  const demoFaculty = useAsyncData(
+    () => apiRequest<DemoUserProfile[]>(withQuery(endpoints.demoAuthUsers, { role: 'faculty' }), { auth: false }),
+    [],
   )
 
   const updateAnnouncement = async (item: AnnouncementItem): Promise<void> => {
@@ -151,6 +160,43 @@ export const AdminDashboardPage = () => {
         <MetricTile title="Certificates" value={analytics.data?.total_certs ?? '--'} caption="On-chain registry entries" tone="amber" />
         <MetricTile title="BFF Health" value={health.data?.status ?? '--'} caption={health.data?.service ?? 'algocampus-bff'} tone="violet" />
       </section>
+
+      <Card title="Synthetic User Dataset" subtitle="Seeded credentials available for role login and demo routing.">
+        <div className="pill-row">
+          <span className="badge">Students: {demoStudents.data?.length ?? '--'}</span>
+          <span className="badge">Faculty: {demoFaculty.data?.length ?? '--'}</span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Name</th>
+                <th>Username</th>
+                <th>Identifier</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(demoFaculty.data ?? []).slice(0, 5).map((user) => (
+                <tr key={user.id}>
+                  <td>faculty</td>
+                  <td>{user.display_name}</td>
+                  <td>{user.username}</td>
+                  <td>{user.identifier}</td>
+                </tr>
+              ))}
+              {(demoStudents.data ?? []).slice(0, 8).map((user) => (
+                <tr key={user.id}>
+                  <td>student</td>
+                  <td>{user.display_name}</td>
+                  <td>{user.username}</td>
+                  <td>{user.identifier}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       <section className="progress-strip">
         <ProgressRing label="Reliability" subtitle="Health route status" value={healthScore} tone="teal" compact />

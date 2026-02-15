@@ -13,6 +13,29 @@ export interface MeResponse {
   role: Role
 }
 
+export interface DemoAuthLoginRequest {
+  role: Role
+  username: string
+  password: string
+  remember_me?: boolean
+}
+
+export interface DemoUserProfile {
+  id: string
+  role: Role
+  username: string
+  display_name: string
+  identifier: string
+  is_active: boolean
+}
+
+export interface DemoAuthLoginResponse {
+  ok: boolean
+  demo_token: string
+  profile: DemoUserProfile
+  message: string
+}
+
 export interface Poll {
   poll_id: number
   question: string
@@ -47,6 +70,21 @@ export interface SessionListResponse {
   count: number
 }
 
+export interface SessionUpdateRequest {
+  course_code?: string
+  session_ts?: number
+  open_round?: number
+  close_round?: number
+}
+
+export interface SessionCloseResponse {
+  ok: boolean
+  session_id: number
+  close_round: number
+  anchor_tx_id?: string
+  message: string
+}
+
 export interface CertItem {
   cert_hash: string
   recipient: string
@@ -68,6 +106,14 @@ export interface CertVerifyResponse {
   issued_ts?: number
   metadata_url?: string
   message?: string
+}
+
+export interface CertUploadVerifyResult {
+  ok: boolean
+  source: string
+  cert_hash?: string
+  candidates: string[]
+  message: string
 }
 
 export interface AnalyticsSummary {

@@ -2,6 +2,10 @@ export const endpoints = {
   authNonce: '/auth/nonce',
   authVerify: '/auth/verify',
   me: '/me',
+  demoAuthLogin: '/demo-auth/login',
+  demoAuthLogout: '/demo-auth/logout',
+  demoAuthProfile: '/demo-auth/profile',
+  demoAuthUsers: '/demo-auth/users',
 
   polls: '/polls',
   pollById: (pollId: number | string) => `/polls/${pollId}`,
@@ -15,11 +19,14 @@ export const endpoints = {
 
   certIssue: '/cert/issue',
   certVerify: '/cert/verify',
+  certVerifyUpload: '/cert/verify/upload',
   certList: '/certs',
   certMetadata: (certHash: string) => `/metadata/cert/${certHash}.json`,
 
   facultyPolls: '/faculty/polls',
   facultySessions: '/faculty/sessions',
+  facultySessionUpdate: (sessionId: number | string) => `/faculty/sessions/${sessionId}`,
+  facultySessionClose: (sessionId: number | string) => `/faculty/sessions/${sessionId}/close`,
 
   analyticsSummary: '/analytics/summary',
 

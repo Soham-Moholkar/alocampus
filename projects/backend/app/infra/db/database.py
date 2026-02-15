@@ -170,6 +170,20 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     updated             REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS demo_users (
+    id            TEXT PRIMARY KEY,
+    role          TEXT NOT NULL,
+    username      TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    display_name  TEXT NOT NULL,
+    identifier    TEXT NOT NULL,
+    is_active     INTEGER NOT NULL DEFAULT 1,
+    created       REAL NOT NULL,
+    updated       REAL NOT NULL,
+    UNIQUE(role, username),
+    UNIQUE(role, identifier)
+);
+
 CREATE TABLE IF NOT EXISTS attendance_records (
     id              TEXT PRIMARY KEY,
     session_id      INTEGER NOT NULL,
@@ -200,6 +214,7 @@ CREATE INDEX IF NOT EXISTS idx_announcements_updated ON announcements(updated DE
 CREATE INDEX IF NOT EXISTS idx_announcements_poll ON announcements(poll_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_records_student ON attendance_records(student_address, attended_at DESC);
 CREATE INDEX IF NOT EXISTS idx_attendance_records_course ON attendance_records(course_code, attended_at DESC);
+CREATE INDEX IF NOT EXISTS idx_demo_users_role ON demo_users(role);
 """
 
 _PG_SCHEMA_STATEMENTS = [
@@ -365,6 +380,21 @@ _PG_SCHEMA_STATEMENTS = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS demo_users (
+        id            TEXT PRIMARY KEY,
+        role          TEXT NOT NULL,
+        username      TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        display_name  TEXT NOT NULL,
+        identifier    TEXT NOT NULL,
+        is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+        created       DOUBLE PRECISION NOT NULL,
+        updated       DOUBLE PRECISION NOT NULL,
+        UNIQUE(role, username),
+        UNIQUE(role, identifier)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS attendance_records (
         id              TEXT PRIMARY KEY,
         session_id      BIGINT NOT NULL,
@@ -395,6 +425,7 @@ _PG_SCHEMA_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_announcements_poll ON announcements(poll_id)",
     "CREATE INDEX IF NOT EXISTS idx_attendance_records_student ON attendance_records(student_address, attended_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_attendance_records_course ON attendance_records(course_code, attended_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_demo_users_role ON demo_users(role)",
 ]
 
 

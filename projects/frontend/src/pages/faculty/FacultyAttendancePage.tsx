@@ -24,9 +24,13 @@ import type {
   AiPlanResponse,
   AnalyticsSummary,
   Session,
+  SessionCloseResponse,
   SessionListResponse,
+  SessionUpdateRequest,
   TxStatus as TxStatusModel,
 } from '../../types/api'
+
+type AttendanceTab = 'create' | 'manage' | 'review' | 'analytics'
 
 export const FacultyAttendancePage = () => {
   const { enqueueSnackbar } = useSnackbar()
@@ -35,12 +39,20 @@ export const FacultyAttendancePage = () => {
   const { isAuthenticated } = useAuth()
   const { canFacultyWrite, chainRole } = useRoleAccess()
 
+  const [tab, setTab] = useState<AttendanceTab>('create')
   const [courseCode, setCourseCode] = useState('')
   const [sessionTs, setSessionTs] = useState('')
   const [openRound, setOpenRound] = useState('')
   const [closeRound, setCloseRound] = useState('')
   const [busy, setBusy] = useState(false)
+
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null)
+  const [editCourseCode, setEditCourseCode] = useState('')
+  const [editSessionTs, setEditSessionTs] = useState('')
+  const [editOpenRound, setEditOpenRound] = useState('')
+  const [editCloseRound, setEditCloseRound] = useState('')
+  const [manageBusy, setManageBusy] = useState(false)
+
   const [verifyAddress, setVerifyAddress] = useState('')
   const [presence, setPresence] = useState<boolean | null>(null)
   const [txStatus, setTxStatus] = useState<TxStatusModel | null>(null)
@@ -55,7 +67,9 @@ export const FacultyAttendancePage = () => {
   const records = useAsyncData(
     () =>
       selectedSessionId && canFacultyWrite
-        ? apiRequest<AttendanceRecordListResponse>(withQuery(endpoints.attendanceRecordsSession(selectedSessionId), { limit: 200 }))
+        ? apiRequest<AttendanceRecordListResponse>(
+            withQuery(endpoints.attendanceRecordsSession(selectedSessionId), { limit: 200 }),
+          )
         : Promise.resolve({ records: [], count: 0 }),
     [selectedSessionId, canFacultyWrite],
   )
@@ -73,6 +87,14 @@ export const FacultyAttendancePage = () => {
     return sessions.data.sessions.find((session) => session.session_id === selectedSessionId) ?? null
   }, [selectedSessionId, sessions.data])
 
+  useEffect(() => {
+    if (!selectedSession) return
+    setEditCourseCode(selectedSession.course_code)
+    setEditSessionTs(String(selectedSession.session_ts))
+    setEditOpenRound(String(selectedSession.open_round))
+    setEditCloseRound(String(selectedSession.close_round))
+  }, [selectedSession])
+
   const createSession = async (): Promise<void> => {
     if (!canFacultyWrite) {
       enqueueSnackbar('Faculty or admin chain role is required to create sessions.', { variant: 'warning' })
@@ -83,7 +105,13 @@ export const FacultyAttendancePage = () => {
     const open = Number(openRound)
     const close = Number(closeRound)
 
-    if (!courseCode.trim() || !Number.isFinite(ts) || !Number.isFinite(open) || !Number.isFinite(close) || close <= open) {
+    if (
+      !courseCode.trim() ||
+      !Number.isFinite(ts) ||
+      !Number.isFinite(open) ||
+      !Number.isFinite(close) ||
+      close <= open
+    ) {
       enqueueSnackbar('Fill valid course, timestamp, and round window.', { variant: 'warning' })
       return
     }
@@ -107,6 +135,7 @@ export const FacultyAttendancePage = () => {
       setCloseRound('')
       await sessions.refresh()
       setSelectedSessionId(session.session_id)
+      setTab('manage')
 
       if (session.tx_id) {
         const tracked = await notifyTxLifecycle({
@@ -120,6 +149,59 @@ export const FacultyAttendancePage = () => {
       enqueueSnackbar(err instanceof Error ? err.message : 'Session creation failed', { variant: 'error' })
     } finally {
       setBusy(false)
+    }
+  }
+
+  const updateSession = async (): Promise<void> => {
+    if (!canFacultyWrite || !selectedSessionId) {
+      enqueueSnackbar('Select a session and ensure faculty/admin chain role is available.', { variant: 'warning' })
+      return
+    }
+
+    const payload: SessionUpdateRequest = {}
+    if (editCourseCode.trim()) payload.course_code = editCourseCode.trim()
+    if (editSessionTs.trim()) payload.session_ts = Number(editSessionTs)
+    if (editOpenRound.trim()) payload.open_round = Number(editOpenRound)
+    if (editCloseRound.trim()) payload.close_round = Number(editCloseRound)
+
+    if (Object.keys(payload).length === 0) {
+      enqueueSnackbar('No update fields provided.', { variant: 'warning' })
+      return
+    }
+
+    setManageBusy(true)
+    try {
+      await apiRequest<Session>(endpoints.facultySessionUpdate(selectedSessionId), {
+        method: 'PATCH',
+        body: payload,
+      })
+      enqueueSnackbar('Session metadata updated.', { variant: 'success' })
+      await sessions.refresh()
+      await records.refresh()
+    } catch (error) {
+      enqueueSnackbar(error instanceof Error ? error.message : 'Session update failed', { variant: 'error' })
+    } finally {
+      setManageBusy(false)
+    }
+  }
+
+  const closeSession = async (): Promise<void> => {
+    if (!canFacultyWrite || !selectedSessionId) {
+      enqueueSnackbar('Select a session and ensure faculty/admin chain role is available.', { variant: 'warning' })
+      return
+    }
+    setManageBusy(true)
+    try {
+      const response = await apiRequest<SessionCloseResponse>(endpoints.facultySessionClose(selectedSessionId), {
+        method: 'POST',
+      })
+      enqueueSnackbar(`Session closed at round ${response.close_round}`, { variant: 'success' })
+      await sessions.refresh()
+      await records.refresh()
+    } catch (error) {
+      enqueueSnackbar(error instanceof Error ? error.message : 'Session close failed', { variant: 'error' })
+    } finally {
+      setManageBusy(false)
     }
   }
 
@@ -166,10 +248,10 @@ export const FacultyAttendancePage = () => {
           auto_execute: true,
           context: {
             payload: {
-              course_code: courseCode.trim() || 'CSE-AUTO',
-              session_ts: Number(sessionTs || Math.floor(Date.now() / 1000)),
-              open_round: Number(openRound || 0),
-              close_round: Number(closeRound || 0),
+              course_code: courseCode.trim() || selectedSession?.course_code || 'CSE-AUTO',
+              session_ts: Number(sessionTs || editSessionTs || Math.floor(Date.now() / 1000)),
+              open_round: Number(openRound || editOpenRound || 0),
+              close_round: Number(closeRound || editCloseRound || 0),
             },
           },
         },
@@ -195,14 +277,14 @@ export const FacultyAttendancePage = () => {
     }
     setAiBusy(true)
     try {
-      const result = await apiRequest<AiExecuteResponse>(endpoints.aiExecute(aiPlan.intent_id), { method: 'POST' })
-      setAiExec(result)
-      enqueueSnackbar(result.message, { variant: result.status === 'executed' ? 'success' : 'info' })
-      if (result.tx_id) {
+      const response = await apiRequest<AiExecuteResponse>(endpoints.aiExecute(aiPlan.intent_id), { method: 'POST' })
+      setAiExec(response)
+      enqueueSnackbar(response.message, { variant: response.status === 'executed' ? 'success' : 'info' })
+      if (response.tx_id) {
         const tracked = await notifyTxLifecycle({
-          txId: result.tx_id,
+          txId: response.tx_id,
           kind: 'ai',
-          pendingLabel: `Tracking AI execution tx ${result.tx_id}`,
+          pendingLabel: `Tracking AI execution tx ${response.tx_id}`,
         })
         setTxStatus(tracked)
       }
@@ -242,166 +324,246 @@ export const FacultyAttendancePage = () => {
   return (
     <div className="page-grid">
       {!isAuthenticated ? (
-        <LiveAccessNotice body="Session creation requires live sign-in. You can still inspect attendance analytics in demo mode." />
+        <LiveAccessNotice body="Session writes require live wallet sign-in. You can still inspect attendance analytics in role mode." />
       ) : null}
       {isAuthenticated && !canFacultyWrite ? <ChainRoleNotice required="faculty" chainRole={chainRole} /> : null}
 
-      <Card title="Create Attendance Session">
-        <div className="form-grid">
-          <label htmlFor="course-code">Course Code</label>
-          <input id="course-code" value={courseCode} onChange={(event) => setCourseCode(event.target.value)} />
-
-          <label htmlFor="session-ts">Session Timestamp (unix)</label>
-          <input id="session-ts" value={sessionTs} onChange={(event) => setSessionTs(event.target.value)} />
-
-          <label htmlFor="open-round">Open Round</label>
-          <input id="open-round" value={openRound} onChange={(event) => setOpenRound(event.target.value)} />
-
-          <label htmlFor="close-round">Close Round</label>
-          <input id="close-round" value={closeRound} onChange={(event) => setCloseRound(event.target.value)} />
-
-          <button type="button" className="btn btn-primary" onClick={() => void createSession()} disabled={busy || !canFacultyWrite}>
-            {busy ? 'Creating...' : 'Create Session'}
+      <Card title="Attendance Operations">
+        <div className="inline-row">
+          <button type="button" className={`btn ${tab === 'create' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('create')}>
+            Create
+          </button>
+          <button type="button" className={`btn ${tab === 'manage' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('manage')}>
+            Edit / Close
+          </button>
+          <button type="button" className={`btn ${tab === 'review' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('review')}>
+            Review Overrides
+          </button>
+          <button type="button" className={`btn ${tab === 'analytics' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('analytics')}>
+            Analytics
           </button>
         </div>
       </Card>
 
-      <Card title="AI Session Automation">
-        <p>Low-risk attendance session creation can auto-execute via AI intent policy.</p>
-        {!isAuthenticated ? (
-          <LiveAccessNotice body="AI plan and execution require live authenticated session." />
-        ) : null}
-        <div className="form-grid">
-          <label htmlFor="faculty-session-ai-prompt">Prompt</label>
-          <textarea
-            id="faculty-session-ai-prompt"
-            rows={3}
-            value={aiPrompt}
-            onChange={(event) => setAiPrompt(event.target.value)}
-          />
-          <div className="inline-row">
-            <button type="button" className="btn btn-primary" onClick={() => void planSessionWithAi()} disabled={aiBusy || !canFacultyWrite}>
-              {aiBusy ? 'Planning...' : 'AI Plan + Auto Execute'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => void executeSessionIntent()}
-              disabled={aiBusy || !aiPlan || !canFacultyWrite}
-            >
-              Execute Intent
-            </button>
-          </div>
-        </div>
-
-        {aiPlan ? (
-          <>
-            <div className="kv">
-              <span>Intent ID</span>
-              <code>{aiPlan.intent_id}</code>
-            </div>
-            <div className="kv">
-              <span>Intent Hash</span>
-              <code>{aiPlan.intent_hash}</code>
-            </div>
-            <div className="kv">
-              <span>Risk / Mode</span>
-              <span>{aiPlan.risk_level} / {aiPlan.execution_mode}</span>
-            </div>
-          </>
-        ) : null}
-        {aiExec ? (
-          <div className="kv">
-            <span>Execution</span>
-            <span>{aiExec.status}{aiExec.tx_id ? ` (${aiExec.tx_id})` : ''}</span>
-          </div>
-        ) : null}
-      </Card>
-
-      <Card
-        title="Session Detail"
-        right={(
-          <div className="button-grid">
-            <button type="button" className="btn btn-ghost" onClick={() => void sessions.refresh()}>Refresh</button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() =>
-                downloadJson('faculty-attendance-sessions.json', {
-                  sessions: sessions.data?.sessions ?? [],
-                  selectedSession,
-                })
-              }
-            >
-              Export JSON
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() =>
-                downloadCsv(
-                  'faculty-attendance-sessions.csv',
-                  ['session_id', 'course_code', 'session_ts', 'open_round', 'close_round'],
-                  (sessions.data?.sessions ?? []).map((session) => [
-                    session.session_id,
-                    session.course_code,
-                    session.session_ts,
-                    session.open_round,
-                    session.close_round,
-                  ]),
-                )
-              }
-            >
-              Export CSV
-            </button>
-          </div>
-        )}
-      >
-        {sessions.loading ? <LoadingSkeleton rows={4} /> : null}
-        {!sessions.loading && sessions.data?.count === 0 ? (
-          <EmptyState title="No sessions" body="Create a session to manage attendance." />
-        ) : null}
-
-        {sessions.data?.count ? (
-          <>
-            <div className="list-select">
-              <label htmlFor="session-selector">Session</label>
-              <select
-                id="session-selector"
-                value={selectedSessionId ?? ''}
-                onChange={(event) => setSelectedSessionId(Number(event.target.value))}
+      {(tab === 'manage' || tab === 'review') ? (
+        <Card
+          title="Session Detail"
+          right={(
+            <div className="button-grid">
+              <button type="button" className="btn btn-ghost" onClick={() => void sessions.refresh()}>Refresh</button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() =>
+                  downloadJson('faculty-attendance-sessions.json', {
+                    sessions: sessions.data?.sessions ?? [],
+                    selectedSession,
+                  })
+                }
               >
-                {sessions.data.sessions.map((session) => (
-                  <option key={session.session_id} value={session.session_id}>
-                    #{session.session_id} - {session.course_code}
-                  </option>
-                ))}
-              </select>
+                Export JSON
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() =>
+                  downloadCsv(
+                    'faculty-attendance-sessions.csv',
+                    ['session_id', 'course_code', 'session_ts', 'open_round', 'close_round'],
+                    (sessions.data?.sessions ?? []).map((session) => [
+                      session.session_id,
+                      session.course_code,
+                      session.session_ts,
+                      session.open_round,
+                      session.close_round,
+                    ]),
+                  )
+                }
+              >
+                Export CSV
+              </button>
             </div>
+          )}
+        >
+          {sessions.loading ? <LoadingSkeleton rows={4} /> : null}
+          {!sessions.loading && sessions.data?.count === 0 ? (
+            <EmptyState title="No sessions" body="Create a session to manage attendance." />
+          ) : null}
 
-            {selectedSession ? (
-              <>
-                <div className="kv">
-                  <span>Course</span>
-                  <span>{selectedSession.course_code}</span>
-                </div>
-                <div className="kv">
-                  <span>Session Time</span>
-                  <span>{formatDateTime(selectedSession.session_ts)}</span>
-                </div>
-                <div className="kv">
-                  <span>Round Window</span>
-                  <span>
-                    {selectedSession.open_round} - {selectedSession.close_round}
-                  </span>
-                </div>
-              </>
-            ) : null}
-          </>
-        ) : null}
-      </Card>
+          {sessions.data?.count ? (
+            <>
+              <div className="list-select">
+                <label htmlFor="session-selector">Session</label>
+                <select
+                  id="session-selector"
+                  value={selectedSessionId ?? ''}
+                  onChange={(event) => setSelectedSessionId(Number(event.target.value))}
+                >
+                  {sessions.data.sessions.map((session) => (
+                    <option key={session.session_id} value={session.session_id}>
+                      #{session.session_id} - {session.course_code}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-      {selectedSession ? (
+              {selectedSession ? (
+                <>
+                  <div className="kv">
+                    <span>Course</span>
+                    <span>{selectedSession.course_code}</span>
+                  </div>
+                  <div className="kv">
+                    <span>Session Time</span>
+                    <span>{formatDateTime(selectedSession.session_ts)}</span>
+                  </div>
+                  <div className="kv">
+                    <span>Round Window</span>
+                    <span>
+                      {selectedSession.open_round} - {selectedSession.close_round}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {tab === 'create' ? (
+        <Card title="Create Attendance Session">
+          <div className="form-grid">
+            <label htmlFor="course-code">Course Code</label>
+            <input id="course-code" value={courseCode} onChange={(event) => setCourseCode(event.target.value)} />
+
+            <label htmlFor="session-ts">Session Timestamp (unix)</label>
+            <input id="session-ts" value={sessionTs} onChange={(event) => setSessionTs(event.target.value)} />
+
+            <label htmlFor="open-round">Open Round</label>
+            <input id="open-round" value={openRound} onChange={(event) => setOpenRound(event.target.value)} />
+
+            <label htmlFor="close-round">Close Round</label>
+            <input id="close-round" value={closeRound} onChange={(event) => setCloseRound(event.target.value)} />
+
+            <button type="button" className="btn btn-primary" onClick={() => void createSession()} disabled={busy || !canFacultyWrite}>
+              {busy ? 'Creating...' : 'Create Session'}
+            </button>
+          </div>
+        </Card>
+      ) : null}
+
+      {tab === 'create' ? (
+        <Card title="AI Session Automation">
+          <p>Low-risk attendance session creation can auto-execute via AI intent policy.</p>
+          {!isAuthenticated ? (
+            <LiveAccessNotice body="AI plan and execution require live authenticated session." />
+          ) : null}
+          <div className="form-grid">
+            <label htmlFor="faculty-session-ai-prompt">Prompt</label>
+            <textarea
+              id="faculty-session-ai-prompt"
+              rows={3}
+              value={aiPrompt}
+              onChange={(event) => setAiPrompt(event.target.value)}
+            />
+            <div className="inline-row">
+              <button type="button" className="btn btn-primary" onClick={() => void planSessionWithAi()} disabled={aiBusy || !canFacultyWrite}>
+                {aiBusy ? 'Planning...' : 'AI Plan + Auto Execute'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => void executeSessionIntent()}
+                disabled={aiBusy || !aiPlan || !canFacultyWrite}
+              >
+                Execute Intent
+              </button>
+            </div>
+          </div>
+
+          {aiPlan ? (
+            <>
+              <div className="kv">
+                <span>Intent ID</span>
+                <code>{aiPlan.intent_id}</code>
+              </div>
+              <div className="kv">
+                <span>Intent Hash</span>
+                <code>{aiPlan.intent_hash}</code>
+              </div>
+              <div className="kv">
+                <span>Risk / Mode</span>
+                <span>{aiPlan.risk_level} / {aiPlan.execution_mode}</span>
+              </div>
+            </>
+          ) : null}
+          {aiExec ? (
+            <div className="kv">
+              <span>Execution</span>
+              <span>{aiExec.status}{aiExec.tx_id ? ` (${aiExec.tx_id})` : ''}</span>
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {tab === 'manage' ? (
+        <Card title="Edit / Close Session">
+          {!selectedSession ? (
+            <EmptyState title="No session selected" body="Choose a session from Session Detail first." />
+          ) : (
+            <div className="form-grid">
+              <label htmlFor="edit-course-code">Course Code</label>
+              <input
+                id="edit-course-code"
+                value={editCourseCode}
+                onChange={(event) => setEditCourseCode(event.target.value)}
+              />
+
+              <label htmlFor="edit-session-ts">Session Timestamp (unix)</label>
+              <input
+                id="edit-session-ts"
+                value={editSessionTs}
+                onChange={(event) => setEditSessionTs(event.target.value)}
+              />
+
+              <label htmlFor="edit-open-round">Open Round</label>
+              <input
+                id="edit-open-round"
+                value={editOpenRound}
+                onChange={(event) => setEditOpenRound(event.target.value)}
+              />
+
+              <label htmlFor="edit-close-round">Close Round</label>
+              <input
+                id="edit-close-round"
+                value={editCloseRound}
+                onChange={(event) => setEditCloseRound(event.target.value)}
+              />
+
+              <div className="inline-row">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void updateSession()}
+                  disabled={!canFacultyWrite || manageBusy}
+                >
+                  {manageBusy ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => void closeSession()}
+                  disabled={!canFacultyWrite || manageBusy}
+                >
+                  Close Session Early
+                </button>
+              </div>
+            </div>
+          )}
+        </Card>
+      ) : null}
+
+      {tab === 'manage' && selectedSession ? (
         <Card title="Verify Student Presence">
           <div className="inline-row">
             <input
@@ -419,7 +581,7 @@ export const FacultyAttendancePage = () => {
         </Card>
       ) : null}
 
-      {selectedSession ? (
+      {tab === 'review' && selectedSession ? (
         <Card title="Attendance Exception Review" subtitle="Review date-wise records and apply late/absent/excused overrides.">
           {records.loading ? <LoadingSkeleton rows={3} compact /> : null}
           {records.error ? <p className="error-text">{records.error}</p> : null}
@@ -466,37 +628,40 @@ export const FacultyAttendancePage = () => {
               </table>
             </div>
           ) : (
-            <EmptyState title="No check-ins tracked yet" body="Attendance records will appear after confirmed check-in tracking." />
+            <EmptyState title="No check-ins tracked yet" body="Attendance records appear after confirmed check-in tracking." />
           )}
         </Card>
       ) : null}
 
-      <Card
-        title="Attendance Analytics"
-        right={(
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => downloadJson('faculty-attendance-analytics.json', analytics.data)}
-            disabled={!analytics.data}
-          >
-            Export JSON
-          </button>
-        )}
-      >
-        {analytics.loading ? <LoadingSkeleton rows={3} compact /> : null}
-        {analytics.data ? (
-          <>
-            <div className="pill-row">
-              <span className="badge">Sessions: {analytics.data.total_sessions}</span>
-              <span className="badge">Check-ins: {analytics.data.total_checkins}</span>
-            </div>
-            <p>{lateSurge ? 'Late surge anomaly indicator: elevated check-ins per session.' : 'No late surge anomaly from available summary.'}</p>
-          </>
-        ) : null}
-      </Card>
+      {tab === 'analytics' ? (
+        <Card
+          title="Attendance Analytics"
+          right={(
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => downloadJson('faculty-attendance-analytics.json', analytics.data)}
+              disabled={!analytics.data}
+            >
+              Export JSON
+            </button>
+          )}
+        >
+          {analytics.loading ? <LoadingSkeleton rows={3} compact /> : null}
+          {analytics.data ? (
+            <>
+              <div className="pill-row">
+                <span className="badge">Sessions: {analytics.data.total_sessions}</span>
+                <span className="badge">Check-ins: {analytics.data.total_checkins}</span>
+              </div>
+              <p>{lateSurge ? 'Late surge anomaly indicator: elevated check-ins per session.' : 'No late surge anomaly from available summary.'}</p>
+            </>
+          ) : null}
+        </Card>
+      ) : null}
 
-      <TxStatus tx={txStatus} loading={busy} />
+      <TxStatus tx={txStatus} loading={busy || aiBusy || manageBusy || reviewBusy} />
     </div>
   )
 }
+

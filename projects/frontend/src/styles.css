@@ -1159,7 +1159,7 @@ pre {
 }
 
 .auth-card-wide {
-  width: min(700px, 100%);
+  width: min(980px, 100%);
 }
 
 .auth-grid {
@@ -1189,6 +1189,10 @@ pre {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+.role-card-grid-large {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .role-card {
@@ -1223,6 +1227,87 @@ pre {
   height: 74px;
   border-radius: 16px;
   object-fit: cover;
+}
+
+.role-select-shell {
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.94)),
+    radial-gradient(circle at 90% 12%, rgba(79, 198, 165, 0.15), transparent 35%);
+}
+
+.role-select-card {
+  gap: 0.7rem;
+  align-content: start;
+  min-height: 240px;
+}
+
+.role-select-card p {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.login-shell {
+  max-width: 720px;
+}
+
+.login-hero {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.login-hero img {
+  width: 76px;
+  height: 76px;
+  border-radius: 18px;
+}
+
+.landing-grid {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.landing-hero {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(circle at 12% 16%, rgba(93, 103, 232, 0.16), transparent 34%),
+    radial-gradient(circle at 82% 22%, rgba(48, 198, 163, 0.18), transparent 30%),
+    var(--bg-surface);
+  box-shadow: var(--shadow-card);
+  padding: clamp(1rem, 2.8vw, 2rem);
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-items: center;
+}
+
+.landing-copy h1 {
+  font-size: clamp(2rem, 4.2vw, 3rem);
+  line-height: 1.06;
+  margin-bottom: 0.45rem;
+}
+
+.landing-copy p {
+  color: var(--text-muted);
+  max-width: 60ch;
+}
+
+.landing-visual {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.landing-visual img {
+  width: 100%;
+  border-radius: 18px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-soft);
+  padding: 0.75rem;
 }
 
 .tour-overlay {
@@ -1444,7 +1529,7 @@ pre {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--ink) 42%, transparent);
+  background: rgba(7, 12, 28, 0.42);
   display: grid;
   place-items: center;
   z-index: 50;
@@ -1459,7 +1544,7 @@ pre {
   border: 1px solid var(--line-soft);
   background: var(--bg-surface);
   padding: 1rem;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-card);
 }
 
 @media (max-width: 1460px) {
@@ -1592,6 +1677,14 @@ pre {
   .attendance-subject-grid,
   .auth-grid {
     grid-template-columns: 1fr;
+  }
+
+  .landing-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-visual {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .auth-grid .auth-intro,

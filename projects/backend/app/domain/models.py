@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Role(str, Enum):
@@ -36,6 +36,35 @@ class TokenResponse(BaseModel):
 class MeResponse(BaseModel):
     address: str
     role: str
+
+
+# Demo role login
+class DemoAuthLoginRequest(BaseModel):
+    role: Role
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=6, max_length=128)
+    remember_me: bool = False
+
+
+class DemoUserProfile(BaseModel):
+    id: str
+    role: Role
+    username: str
+    display_name: str
+    identifier: str
+    is_active: bool = True
+
+
+class DemoAuthLoginResponse(BaseModel):
+    ok: bool = True
+    demo_token: str
+    profile: DemoUserProfile
+    message: str = "login successful"
+
+
+class DemoAuthLogoutResponse(BaseModel):
+    ok: bool = True
+    message: str = "logged out"
 
 
 # Admin
@@ -124,6 +153,38 @@ class SessionListResponse(BaseModel):
     count: int
 
 
+class SessionUpdateRequest(BaseModel):
+    course_code: str | None = Field(default=None, min_length=1, max_length=50)
+    session_ts: int | None = Field(default=None, ge=0)
+    open_round: int | None = Field(default=None, ge=0)
+    close_round: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_update(self) -> "SessionUpdateRequest":
+        if (
+            self.course_code is None
+            and self.session_ts is None
+            and self.open_round is None
+            and self.close_round is None
+        ):
+            raise ValueError("at least one field is required")
+        if (
+            self.open_round is not None
+            and self.close_round is not None
+            and self.close_round <= self.open_round
+        ):
+            raise ValueError("close_round must be greater than open_round")
+        return self
+
+
+class SessionCloseResponse(BaseModel):
+    ok: bool = True
+    session_id: int
+    close_round: int
+    anchor_tx_id: str | None = None
+    message: str = "session closed"
+
+
 # Certificates
 class IssueCertRequest(BaseModel):
     recipient_address: str = Field(..., min_length=58, max_length=58)
@@ -159,6 +220,14 @@ class CertVerifyResponse(BaseModel):
     asset_id: Optional[int] = None
     issued_ts: Optional[int] = None
     metadata_url: Optional[str] = None
+    message: str = ""
+
+
+class CertUploadVerifyResult(BaseModel):
+    ok: bool
+    source: str
+    cert_hash: str | None = None
+    candidates: list[str] = Field(default_factory=list)
     message: str = ""
 
 

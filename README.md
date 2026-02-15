@@ -600,6 +600,60 @@ In `projects/backend/.env.localnet`:
 
 ## Known Issues & Fixes
 
+## v2.4 UI + Role Login + Verify Upload
+
+### New Public + Auth Flow
+
+- `/` is now the public landing page.
+- `/connect` is role selection only.
+- `/login/student`, `/login/faculty`, `/login/admin` are credential pages backed by demo-auth APIs.
+- After credential login, role preview session starts immediately and wallet JWT sign-in auto-attempts in the background.
+
+### New Backend Endpoints (Additive)
+
+- `POST /demo-auth/login`
+- `POST /demo-auth/logout`
+- `GET /demo-auth/profile` (`X-Demo-Token` header)
+- `GET /demo-auth/users`
+- `PATCH /faculty/sessions/{session_id}`
+- `POST /faculty/sessions/{session_id}/close`
+- `POST /cert/verify/upload` (best-effort hash extraction fallback)
+
+### Verify Certificate Upload Modes
+
+`/verify/certificate` now supports:
+
+- Manual hash verify
+- JSON/Text upload extraction
+- QR link/image extraction
+- PDF best-effort extraction
+- Backend upload parser fallback
+
+### Demo Credential Dataset
+
+On backend startup, an idempotent seed now ensures:
+
+- 30 student demo users
+- 5 faculty demo users
+- 1 admin demo user
+
+Default local demo password:
+
+- `AlgoCampus@123`
+
+Sample usernames:
+
+- students: `student01` ... `student30`
+- faculty: `faculty01` ... `faculty05`
+- admin: `admin01`
+
+### AWS WAF Production Blueprint
+
+Local runtime is unchanged. Production guidance is documented in:
+
+- `infra/aws-waf-blueprint.md`
+- `infra/terraform/aws-waf/`
+
 | Issue | Cause | Fix |
 |-------|-------|-----|
 | **AlgoPy API differences** | `algorand-python` / `puyapy` version mismatches | Pin versions in `pyproject.toml`; check compiler error messages for exact required syntax |

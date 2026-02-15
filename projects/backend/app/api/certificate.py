@@ -7,11 +7,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, File, Query, UploadFile
 from fastapi import Depends
 
 from app.auth import TokenPayload, require_faculty
-from app.domain.models import CertVerifyResponse
+from app.domain.models import CertUploadVerifyResult, CertVerifyResponse
 from app.domain.models import IssueCertRequest, IssueCertResponse
 from app.usecases import certs_uc
 from app.usecases import certificate_uc
@@ -34,3 +34,14 @@ async def issue_cert_alias(
 ) -> IssueCertResponse:
     """Compatibility alias for certificate issuance."""
     return await certificate_uc.issue(body)
+
+
+@router.post("/verify/upload", response_model=CertUploadVerifyResult)
+async def verify_cert_upload(file: UploadFile = File(...)) -> CertUploadVerifyResult:
+    """Best-effort parser to extract cert hash from uploaded JSON/text/PDF."""
+    content = await file.read()
+    return certs_uc.parse_upload(
+        filename=file.filename or "upload.bin",
+        content_type=file.content_type or "application/octet-stream",
+        raw=content,
+    )

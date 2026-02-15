@@ -30,6 +30,7 @@ import type {
   PollListResponse,
   PollContextResponse,
   SessionListResponse,
+  DemoUserProfile,
 } from '../../types/api'
 
 import facultyAvatar from '../../assets/ui/avatar-faculty.svg'
@@ -87,6 +88,14 @@ export const FacultyDashboardPage = () => {
         ? apiRequest<PollContextResponse>(endpoints.pollContext(contextPollId), { auth: false }).catch(() => null)
         : Promise.resolve(null),
     [contextPollId],
+  )
+  const demoStudents = useAsyncData(
+    () => apiRequest<DemoUserProfile[]>(withQuery(endpoints.demoAuthUsers, { role: 'student' }), { auth: false }),
+    [],
+  )
+  const demoFaculty = useAsyncData(
+    () => apiRequest<DemoUserProfile[]>(withQuery(endpoints.demoAuthUsers, { role: 'faculty' }), { auth: false }),
+    [],
   )
 
   const myPolls = polls.data?.polls.filter((item) => item.creator === address) ?? []
@@ -334,6 +343,43 @@ export const FacultyDashboardPage = () => {
         <MetricTile title="Certificates Issued" value={certCount} caption="BFF cache records" tone="amber" />
         <MetricTile title="Turnout Index" value={`${pollTurnout}%`} caption="Current participation score" tone="violet" />
       </section>
+
+      <Card title="Synthetic Campus Roster" subtitle="Seeded local dataset for role-login workflows.">
+        <div className="pill-row">
+          <span className="badge">Students: {demoStudents.data?.length ?? '--'}</span>
+          <span className="badge">Faculty: {demoFaculty.data?.length ?? '--'}</span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Name</th>
+                <th>Username</th>
+                <th>ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(demoFaculty.data ?? []).slice(0, 3).map((user) => (
+                <tr key={user.id}>
+                  <td>faculty</td>
+                  <td>{user.display_name}</td>
+                  <td>{user.username}</td>
+                  <td>{user.identifier}</td>
+                </tr>
+              ))}
+              {(demoStudents.data ?? []).slice(0, 7).map((user) => (
+                <tr key={user.id}>
+                  <td>student</td>
+                  <td>{user.display_name}</td>
+                  <td>{user.username}</td>
+                  <td>{user.identifier}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       <section className="progress-strip">
         {analytics.loading ? (

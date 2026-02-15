@@ -16,6 +16,8 @@ import { FacultyProfilePage } from './pages/faculty/FacultyProfilePage'
 import { FacultyVotingPage } from './pages/faculty/FacultyVotingPage'
 import { ActivityPage } from './pages/shared/ActivityPage'
 import { ConnectPage } from './pages/shared/ConnectPage'
+import { LandingPage } from './pages/shared/LandingPage'
+import { RoleLoginPage } from './pages/shared/RoleLoginPage'
 import { SettingsPage } from './pages/shared/SettingsPage'
 import { VerifyCertificatePage } from './pages/shared/VerifyCertificatePage'
 import { StudentAttendancePage } from './pages/student/StudentAttendancePage'
@@ -25,7 +27,7 @@ import { StudentFeedbackPage } from './pages/student/StudentFeedbackPage'
 import { StudentProfilePage } from './pages/student/StudentProfilePage'
 import { StudentVotingPage } from './pages/student/StudentVotingPage'
 
-const HomeRedirect = () => {
+const RoleHomeRedirect = () => {
   const { isAuthenticated, role, isLoading } = useAuth()
   const preview = usePreview()
 
@@ -35,7 +37,7 @@ const HomeRedirect = () => {
 
   const effectiveRole = preview.role ?? role
   if (!effectiveRole) {
-    return <Navigate to="/connect" replace />
+    return <Navigate to="/" replace />
   }
 
   if (effectiveRole === 'admin') {
@@ -45,6 +47,22 @@ const HomeRedirect = () => {
     return <Navigate to="/faculty/dashboard" replace />
   }
   return <Navigate to="/student/dashboard" replace />
+}
+
+const RootRoute = () => {
+  const { role, isLoading } = useAuth()
+  const preview = usePreview()
+
+  if (isLoading) {
+    return <div className="center-page">Loading session...</div>
+  }
+
+  const effectiveRole = preview.role ?? role
+  if (effectiveRole) {
+    return <RoleHomeRedirect />
+  }
+
+  return <LandingPage />
 }
 
 const RequireAuth = () => {
@@ -85,12 +103,12 @@ const AdminGuard = () => {
 export const App = () => (
   <Routes>
     <Route path="/connect" element={<ConnectPage />} />
+    <Route path="/login/:role" element={<RoleLoginPage />} />
 
     <Route element={<PublicLayout />}>
+      <Route path="/" element={<RootRoute />} />
       <Route path="/verify/certificate" element={<VerifyCertificatePage />} />
     </Route>
-
-    <Route path="/" element={<HomeRedirect />} />
 
     <Route element={<RequireAuth />}>
       <Route element={<AppShell />}>

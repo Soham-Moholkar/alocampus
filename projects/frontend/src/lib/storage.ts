@@ -12,6 +12,7 @@ const KEY_DEMO_POLL_RESULTS = 'algocampus.demo.pollResults'
 const KEY_SYNTH_ACTIVITY = 'algocampus.synthetic.activity'
 const KEY_ROLE_ENTRY_PROFILE = 'algocampus.roleEntryProfile'
 const KEY_TOUR_COMPLETED_PREFIX = 'algocampus.tour.completed'
+const KEY_DEMO_AUTH_TOKEN = 'algocampus.demoAuth.token'
 
 interface DemoPollResultStore {
   [pollId: string]: number[]
@@ -136,6 +137,16 @@ export const saveRoleEntryProfile = (profile: RoleEntryProfile): void => {
 
 export const clearRoleEntryProfile = (): void => {
   localStorage.removeItem(KEY_ROLE_ENTRY_PROFILE)
+}
+
+export const saveDemoAuthToken = (token: string): void => {
+  localStorage.setItem(KEY_DEMO_AUTH_TOKEN, token)
+}
+
+export const loadDemoAuthToken = (): string | null => localStorage.getItem(KEY_DEMO_AUTH_TOKEN)
+
+export const clearDemoAuthToken = (): void => {
+  localStorage.removeItem(KEY_DEMO_AUTH_TOKEN)
 }
 
 const tourKey = (role: Role): string => `${KEY_TOUR_COMPLETED_PREFIX}.${role}`
